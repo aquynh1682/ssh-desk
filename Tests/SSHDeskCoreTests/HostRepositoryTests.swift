@@ -70,7 +70,7 @@ import Testing
         #expect(try await repo.favorites().map(\.id) == [b.id])
         try await repo.setFavorite(id: b.id, false)
         #expect(try await repo.favorites().isEmpty)
-        #expect(try await repo.projects() == ["P1", "P2"])
+        #expect(try await repo.folders() == ["P1", "P2"])
         let d = Date(timeIntervalSince1970: 999)
         try await repo.markLaunchRequested(id: a.id, at: d)
         #expect(try await repo.host(id: a.id)?.lastLaunchRequestedAt == d)

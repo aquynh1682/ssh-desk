@@ -64,7 +64,7 @@ public enum HostPresentation {
         }
     }
 
-    /// Phụ đề ở chi tiết: dòng đầu của ghi chú, nếu không có thì dự án.
+    /// Phụ đề ở chi tiết: dòng đầu của ghi chú, nếu không có thì thư mục.
     public static func subtitle(_ host: HostProfile) -> String {
         let firstLine = host.notes.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty }

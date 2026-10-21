@@ -25,12 +25,7 @@ struct SidebarView: View {
                                 item: .environment(c.environment), trailing: "\(c.count)")
                         }
                     }
-                    if !model.projects.isEmpty {
-                        header("DỰ ÁN")
-                        ForEach(model.projects, id: \.self) { p in
-                            row(p, "folder", item: .project(p))
-                        }
-                    }
+                    folderSection
                 }
                 .padding(.horizontal, 10).padding(.top, 12)
             }
@@ -43,6 +38,114 @@ struct SidebarView: View {
         }
         .frame(width: Theme.sidebarWidth)
         .background(Theme.sidebarBackground)
+        .sheet(item: nameSheetBinding) { dialog in
+            if case .rename(let name) = dialog {
+                FolderNameSheet(model: model, renaming: name)
+            } else {
+                FolderNameSheet(model: model, renaming: nil)
+            }
+        }
+        .confirmationDialog(
+            deleteTitle,
+            isPresented: Binding(
+                get: { if case .confirmDelete = model.folderDialog { return true } else { return false } },
+                set: { if !$0, case .confirmDelete = model.folderDialog { model.folderDialog = nil } }),
+            titleVisibility: .visible
+        ) {
+            if case .confirmDelete(let name) = model.folderDialog {
+                Button("Xoá thư mục", role: .destructive) {
+                    model.folderDialog = nil
+                    Task { await model.deleteFolder(name) }
+                }
+            }
+            Button("Huỷ", role: .cancel) { model.folderDialog = nil }
+        } message: {
+            Text("Chỉ xoá nhóm: các máy chủ trong đó chuyển về “Chưa phân loại”, không bị xoá.")
+        }
+        .confirmationDialog(
+            "Thư mục đã tồn tại",
+            isPresented: Binding(
+                get: { if case .confirmMerge = model.folderDialog { return true } else { return false } },
+                set: { if !$0, case .confirmMerge = model.folderDialog { model.folderDialog = nil } }),
+            titleVisibility: .visible
+        ) {
+            if case .confirmMerge(let from, let to) = model.folderDialog {
+                Button("Gộp vào “\(to)”") {
+                    model.folderDialog = nil
+                    Task { _ = await model.renameFolder(from, to: to, merge: true) }
+                }
+            }
+            Button("Huỷ", role: .cancel) { model.folderDialog = nil }
+        } message: {
+            if case .confirmMerge(let from, let to) = model.folderDialog {
+                Text("Đã có thư mục “\(to)”. Gộp mọi máy chủ của “\(from)” vào đó?")
+            }
+        }
+    }
+
+    /// Chỉ create/rename mở sheet; các hộp thoại xác nhận dùng confirmationDialog.
+    private var nameSheetBinding: Binding<FolderDialog?> {
+        Binding(
+            get: {
+                switch model.folderDialog {
+                case .create, .rename: return model.folderDialog
+                default: return nil
+                }
+            },
+            set: { newValue in
+                if newValue == nil {
+                    switch model.folderDialog {
+                    case .create, .rename: model.folderDialog = nil
+                    default: break
+                    }
+                }
+            })
+    }
+
+    private var deleteTitle: String {
+        if case .confirmDelete(let name) = model.folderDialog { return "Xoá thư mục “\(name)”?" }
+        return ""
+    }
+
+    // MARK: Thư mục
+
+    @ViewBuilder
+    private var folderSection: some View {
+        let counts = model.folderCounts
+        HStack {
+            header("THƯ MỤC")
+            Spacer()
+            Button {
+                model.folderDialog = .create
+            } label: {
+                Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 22, height: 22).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).padding(.top, 16)
+            .help("Tạo thư mục mới").accessibilityLabel("Tạo thư mục mới")
+        }
+        ForEach(counts, id: \.name) { c in
+            FolderRow(
+                model: model, title: c.name, symbol: "folder", count: c.count,
+                item: .folder(c.name), dropFolder: c.name
+            ) {
+                Button("Đổi tên…") { model.folderDialog = .rename(c.name) }
+                Button("Xoá thư mục…", role: .destructive) {
+                    model.folderDialog = .confirmDelete(c.name)
+                }
+            }
+        }
+        if model.uncategorizedCount > 0 || !counts.isEmpty {
+            FolderRow(
+                model: model, title: HostFolders.uncategorizedTitle, symbol: "tray",
+                count: model.uncategorizedCount, item: .uncategorized, dropFolder: nil
+            ) {}
+        }
+        if counts.isEmpty && model.uncategorizedCount == 0 {
+            Text("Chưa có thư mục").font(.system(size: 12))
+                .foregroundStyle(Theme.textTertiary).padding(.horizontal, 10)
+        }
     }
 
     private func header(_ text: String, first: Bool = false) -> some View {
@@ -98,5 +201,116 @@ struct SidebarView: View {
         .padding(.horizontal, 10).padding(.vertical, 7)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Chưa khả dụng")
+    }
+}
+
+/// Hàng thư mục ở thanh bên: chọn để lọc, nhận host kéo thả vào.
+private struct FolderRow<Menu: View>: View {
+    @Bindable var model: AppModel
+    let title: String
+    let symbol: String
+    let count: Int
+    let item: SidebarItem
+    /// Tên thư mục đích khi thả; `nil` = Chưa phân loại.
+    let dropFolder: String?
+    @ViewBuilder let menu: () -> Menu
+    @Local private var targeted = false
+
+    var body: some View {
+        let selected = model.sidebar == item
+        Button {
+            model.sidebar = item
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: targeted ? "folder.fill.badge.plus" : symbol).frame(width: 20)
+                    .foregroundStyle(selected ? Theme.textPrimary : Theme.textSecondary)
+                Text(title).lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(count)").foregroundStyle(Theme.textSecondary).monospacedDigit()
+            }
+            .font(.system(size: 13.5))
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                targeted ? Theme.green.opacity(0.18) : (selected ? Theme.rowSelected : .clear),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Theme.green, lineWidth: targeted ? 1.5 : 0)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu { menu() }
+        .onDrop(of: [.plainText], isTargeted: $targeted) { providers in
+            guard let provider = providers.first else { return false }
+            let target = dropFolder
+            let model = model
+            _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+                let text = (object as? NSString).map { $0 as String }
+                guard let text, let ids = HostFolders.parseDragPayload(text) else { return }
+                Task { @MainActor in await model.moveHosts(ids, toFolder: target) }
+            }
+            return true
+        }
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Sheet nhập tên thư mục (tạo mới hoặc đổi tên).
+struct FolderNameSheet: View {
+    @Bindable var model: AppModel
+    /// `nil` = tạo mới.
+    let renaming: String?
+    @Environment(\.dismiss) private var dismiss
+    @Local private var name = ""
+    @Local private var loaded = false
+
+    private var error: String? {
+        if name.isEmpty { return nil }
+        do { _ = try HostFolders.normalize(name) } catch { return AppModel.message(for: error) }
+        return nil
+    }
+
+    private var canSubmit: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && error == nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(renaming == nil ? "Thư mục mới" : "Đổi tên thư mục")
+                .font(.system(size: 15, weight: .semibold))
+            TextField("Tên thư mục", text: $name).onSubmit(submit)
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            HStack {
+                Spacer()
+                Button("Huỷ") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(renaming == nil ? "Tạo" : "Đổi tên", action: submit)
+                    .keyboardShortcut(.defaultAction).disabled(!canSubmit)
+            }
+        }
+        .padding(18).frame(width: 340)
+        .onAppear {
+            if !loaded {
+                loaded = true
+                name = renaming ?? ""
+            }
+        }
+    }
+
+    private func submit() {
+        guard canSubmit else { return }
+        Task {
+            let ok: Bool
+            if let renaming {
+                ok = await model.renameFolder(renaming, to: name)
+            } else {
+                ok = await model.createFolder(name)
+            }
+            // Đổi tên trùng → model đã chuyển sang hộp thoại hỏi gộp; sheet này đóng như thường.
+            if ok { dismiss() }
+        }
     }
 }

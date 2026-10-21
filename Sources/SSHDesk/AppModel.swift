@@ -8,7 +8,8 @@ enum SidebarItem: Hashable {
     case favorites
     case recent
     case environment(HostEnvironment)
-    case project(String)
+    case folder(String)
+    case uncategorized
     case transfers
     case keys
 
@@ -27,6 +28,24 @@ enum FormTarget: Identifiable {
         switch self {
         case .new: return "new"
         case .edit(let h): return h.id.uuidString
+        }
+    }
+}
+
+/// Hộp thoại thao tác thư mục (hiện ở thanh bên).
+enum FolderDialog: Identifiable {
+    case create
+    case rename(String)
+    case confirmDelete(String)
+    /// Đổi tên trùng thư mục khác: hỏi gộp hay huỷ.
+    case confirmMerge(from: String, to: String)
+
+    var id: String {
+        switch self {
+        case .create: return "create"
+        case .rename(let n): return "rename:\(n)"
+        case .confirmDelete(let n): return "delete:\(n)"
+        case .confirmMerge(let f, let t): return "merge:\(f)>\(t)"
         }
     }
 }
@@ -59,6 +78,11 @@ final class AppModel {
 
     var phase: Phase = .loading
     var hosts: [HostProfile] = []
+    /// Mọi thư mục (kể cả rỗng), đã sắp theo tên.
+    var folders: [String] = []
+    var folderDialog: FolderDialog?
+    /// Nhóm đang thu gọn trong bảng "Tất cả máy chủ" (khoá = tên thư mục, "" = Chưa phân loại). Chỉ nhớ trong phiên.
+    var collapsedGroups: Set<String> = []
     var selection: UUID?
     var sidebar: SidebarItem = .all
     var searchText = ""
@@ -116,6 +140,7 @@ final class AppModel {
             self.service = service
             try await service.regenerateSSHConfig()
             hosts = try await repo.all()
+            folders = try await repo.folders()
             try await startTransfers(database: db, hosts: repo)
             browser = FileBrowserModel(app: self, credentials: credentials)
             phase = .ready
@@ -167,9 +192,36 @@ final class AppModel {
 
     // MARK: - Dữ liệu hiển thị
 
-    var projects: [String] {
-        Array(Set(hosts.map(\.project).filter { !$0.isEmpty }))
-            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    var folderCounts: [HostFolders.FolderCount] {
+        HostFolders.counts(hosts, emptyFolders: folders)
+    }
+
+    var uncategorizedCount: Int { HostFolders.uncategorizedCount(hosts) }
+
+    /// Có chia nhóm theo thư mục trong bảng không (chỉ ở "Tất cả máy chủ", không lọc/tìm).
+    var isGroupedTable: Bool {
+        sidebar == .all && environmentFilter == nil
+            && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var tableGroups: [HostGroup] {
+        HostFolders.group(visibleHosts, emptyFolders: folders)
+    }
+
+    /// Host điều hướng được bằng ↑/↓ (bỏ qua host trong nhóm đang thu gọn).
+    var navigableHosts: [HostProfile] {
+        guard isGroupedTable else { return visibleHosts }
+        return tableGroups.filter { !collapsedGroups.contains($0.name) }.flatMap(\.hosts)
+    }
+
+    func toggleGroup(_ name: String) {
+        if collapsedGroups.contains(name) { collapsedGroups.remove(name) } else { collapsedGroups.insert(name) }
+    }
+
+    /// Dùng đúng cách viết của thư mục đã có nếu trùng tên (không phân biệt hoa thường/dấu).
+    func canonicalFolder(_ name: String) -> String {
+        let t = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return folders.first { HostFolders.sameFolder($0, t) } ?? t
     }
 
     /// Môi trường đang lọc: ưu tiên mục sidebar, nếu không thì Menu lọc.
@@ -187,7 +239,8 @@ final class AppModel {
         case .recent:
             list = HostPresentation.recent(list)
             byRecency = true
-        case .project(let p): list = list.filter { $0.project == p }
+        case .folder(let p): list = list.filter { $0.project == p }
+        case .uncategorized: list = list.filter { $0.project.isEmpty }
         case .transfers, .keys: break
         }
         list = HostPresentation.filter(list, environment: effectiveEnvironment)
@@ -208,7 +261,8 @@ final class AppModel {
         case .all, .environment, .transfers, .keys: return "Máy chủ"
         case .favorites: return "Yêu thích"
         case .recent: return "Gần đây"
-        case .project(let p): return p
+        case .folder(let p): return p
+        case .uncategorized: return HostFolders.uncategorizedTitle
         }
     }
 
@@ -234,6 +288,8 @@ final class AppModel {
         guard let service else { return }
         do {
             hosts = try await service.repository.all()
+            folders = try await service.repository.folders()
+            if case .folder(let f) = sidebar, !folders.contains(f) { sidebar = .all }
             browser?.hostsChanged(hosts)
             if let s = selection, !hosts.contains(where: { $0.id == s }) { selection = nil }
         } catch { show(error, title: "Không đọc được dữ liệu") }
@@ -303,6 +359,58 @@ final class AppModel {
             show(error, title: "Không xoá được hồ sơ")
             await reload()
         }
+    }
+
+    // MARK: - Thư mục
+
+    func createFolder(_ rawName: String) async -> Bool {
+        guard let service else { return false }
+        do {
+            let name = try await service.repository.createFolder(rawName)
+            await reload()
+            sidebar = .folder(name)
+            return true
+        } catch {
+            show(error, title: "Không tạo được thư mục")
+            return false
+        }
+    }
+
+    /// Trả true nếu xong (hoặc đã chuyển sang hỏi gộp); false nếu lỗi.
+    func renameFolder(_ old: String, to rawName: String, merge: Bool = false) async -> Bool {
+        guard let service else { return false }
+        do {
+            let name = try await service.repository.renameFolder(from: old, to: rawName, merge: merge)
+            if sidebar == .folder(old) { sidebar = .folder(name) }
+            await reload()
+            return true
+        } catch HostRepositoryError.folderNameExists(let existing) {
+            folderDialog = .confirmMerge(from: old, to: existing)
+            return true
+        } catch {
+            show(error, title: "Không đổi được tên thư mục")
+            return false
+        }
+    }
+
+    func deleteFolder(_ name: String) async {
+        guard let service else { return }
+        do {
+            let n = try await service.repository.deleteFolder(name)
+            if sidebar == .folder(name) { sidebar = .all }
+            await reload()
+            showToast(n > 0 ? "Đã xoá thư mục; \(n) máy chủ về “Chưa phân loại”" : "Đã xoá thư mục")
+        } catch { show(error, title: "Không xoá được thư mục") }
+    }
+
+    /// `folder == nil`: bỏ thư mục (Chưa phân loại).
+    func moveHosts(_ ids: [UUID], toFolder folder: String?) async {
+        guard let service, !ids.isEmpty else { return }
+        do {
+            try await service.repository.moveHosts(ids: ids, toFolder: folder)
+            await reload()
+            showToast(folder.map { "Đã chuyển vào “\($0)”" } ?? "Đã chuyển về “Chưa phân loại”")
+        } catch { show(error, title: "Không chuyển được máy chủ") }
     }
 
     func openInWarp(_ host: HostProfile, newWindow: Bool = false) async {
@@ -474,6 +582,11 @@ final class AppModel {
         case HostRepositoryError.duplicateID: return "Hồ sơ này đã tồn tại."
         case HostRepositoryError.jumpHostNotFound: return "Bastion đã chọn không còn tồn tại."
         case HostRepositoryError.jumpCycle: return "Chuỗi bastion tạo thành vòng lặp."
+        case FolderNameError.empty: return "Tên thư mục không được để trống."
+        case FolderNameError.tooLong:
+            return "Tên thư mục tối đa \(HostFolders.maxNameLength) ký tự."
+        case FolderNameError.controlCharacters: return "Tên thư mục chứa ký tự điều khiển."
+        case HostRepositoryError.folderNameExists: return "Đã có thư mục trùng tên."
         case HostRepositoryError.referencedAsJumpHost:
             return "Máy này đang là bastion của máy khác."
         case ConnectionServiceError.missingAlias: return "Hồ sơ thiếu alias SSH."

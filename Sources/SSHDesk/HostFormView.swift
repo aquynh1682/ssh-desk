@@ -17,6 +17,7 @@ struct HostFormView: View {
     @Local private var confirmRemoveOnSave = false
     @Local private var passwordInput = ""
     @Local private var hasSavedPassword = false
+    @Local private var creatingFolder = false
 
     private var isNew: Bool { base == nil }
     private var isImported: Bool { base?.connectionMode == .existingSSHConfigAlias }
@@ -68,7 +69,7 @@ struct HostFormView: View {
                                 }
                             }
                         }
-                        TextField("Dự án", text: $draft.project)
+                        folderField
                         Picker("Môi trường", selection: $draft.environment) {
                             ForEach(HostEnvironment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                         }
@@ -94,7 +95,7 @@ struct HostFormView: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(!errors.isEmpty || saving)
+                .disabled(!errors.isEmpty || folderError != nil || saving)
             }
             .padding(12)
         }
@@ -229,10 +230,55 @@ struct HostFormView: View {
         if panel.runModal() == .OK, let url = panel.url { draft.identityFile = url.path }
     }
 
+    private static let newFolderTag = "\u{1}new-folder"
+
+    private var folderError: String? {
+        let t = draft.project.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return nil }
+        do { _ = try HostFolders.normalize(t) } catch { return AppModel.message(for: error) }
+        return nil
+    }
+
+    /// Chọn thư mục sẵn có hoặc "Thư mục mới…" (hiện ô nhập tên).
+    private var folderField: some View {
+        let creating = creatingFolder
+        return VStack(alignment: .leading, spacing: 6) {
+            Picker(
+                "Thư mục",
+                selection: Binding(
+                    get: { creating ? Self.newFolderTag : draft.project },
+                    set: { value in
+                        if value == Self.newFolderTag {
+                            creatingFolder = true
+                            draft.project = ""
+                        } else {
+                            creatingFolder = false
+                            draft.project = value
+                        }
+                    })
+            ) {
+                Text(HostFolders.uncategorizedTitle).tag("")
+                ForEach(folderChoices, id: \.self) { Text($0).tag($0) }
+                Divider()
+                Text("Thư mục mới…").tag(Self.newFolderTag)
+            }
+            if creating {
+                TextField("Tên thư mục mới", text: $draft.project)
+            }
+            if let folderError { Text(folderError).font(.caption).foregroundStyle(.red) }
+        }
+    }
+
+    private var folderChoices: [String] {
+        let cur = draft.project
+        return cur.isEmpty || model.folders.contains(cur) ? model.folders : model.folders + [cur]
+    }
+
     private func save() async {
         saving = true
         defer { saving = false }
-        let profile = draft.profile(basedOn: base)
+        var profile = draft.profile(basedOn: base)
+        profile.project = model.canonicalFolder(profile.project)
         // Lấy giá trị ra rồi xoá khỏi state ngay: không giữ password trong view sau khi lưu.
         let password = draft.authChoice == .password && !passwordInput.isEmpty ? passwordInput : nil
         passwordInput = ""

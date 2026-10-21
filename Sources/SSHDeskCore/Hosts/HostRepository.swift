@@ -8,6 +8,8 @@ public enum HostRepositoryError: Error, Equatable {
     case jumpCycle([UUID])
     /// Không xoá được vì các host này đang dùng nó làm jump host.
     case referencedAsJumpHost([UUID])
+    /// Đổi tên trùng một thư mục khác (giá trị = tên thư mục đang có).
+    case folderNameExists(String)
 }
 
 public actor HostRepository {
@@ -44,10 +46,97 @@ public actor HostRepository {
         try all().filter(\.isFavorite)
     }
 
-    public func projects() throws -> [String] {
+    /// Tên thư mục (một cấp) đang có: thư mục có host + thư mục rỗng đã tạo, sắp theo tên.
+    public func folders() throws -> [String] {
         let rows = try db.query(
-            "SELECT DISTINCT project FROM hosts WHERE project <> '' ORDER BY project COLLATE NOCASE")
-        return rows.compactMap { if case .text(let s)? = $0.first { return s } else { return nil } }
+            "SELECT project FROM hosts WHERE project <> '' UNION SELECT name FROM host_folders")
+        let names = rows.compactMap { row -> String? in
+            if case .text(let s)? = row.first { return s } else { return nil }
+        }
+        return HostFolders.sortedUnique(names)
+    }
+
+    /// Tạo thư mục rỗng. Đã có thư mục trùng tên (không phân biệt hoa thường/dấu) thì dùng lại tên đó.
+    /// Trả tên thư mục thực sự dùng.
+    @discardableResult
+    public func createFolder(_ rawName: String) throws -> String {
+        let name = try HostFolders.normalize(rawName)
+        return try db.transaction {
+            if let existing = try matchingFolder(name, excluding: nil) { return existing }
+            try db.execute("INSERT INTO host_folders(name) VALUES (?)", [.text(name)])
+            return name
+        }
+    }
+
+    /// Đổi tên thư mục: đổi `project` của mọi host trong đó, một transaction.
+    /// Trùng tên thư mục khác → ném `folderNameExists` trừ khi `merge` (gộp vào thư mục đó, giữ cách viết của nó).
+    /// Trả tên thư mục kết quả.
+    @discardableResult
+    public func renameFolder(from old: String, to rawName: String, merge: Bool = false) throws
+        -> String
+    {
+        let new = try HostFolders.normalize(rawName)
+        return try db.transaction {
+            var target = new
+            if let other = try matchingFolder(new, excluding: old) {
+                if !merge { throw HostRepositoryError.folderNameExists(other) }
+                target = other
+            }
+            if target == old { return old }
+            try db.execute(
+                "UPDATE hosts SET project = ?, updated_at = ? WHERE project = ?",
+                [.text(target), .real(now().timeIntervalSince1970), .text(old)])
+            try db.execute("DELETE FROM host_folders WHERE name = ?", [.text(old)])
+            try db.execute("INSERT OR IGNORE INTO host_folders(name) VALUES (?)", [.text(target)])
+            return target
+        }
+    }
+
+    /// Xoá thư mục: host trong đó về "Chưa phân loại". KHÔNG xoá host. Trả số host bị ảnh hưởng.
+    @discardableResult
+    public func deleteFolder(_ name: String) throws -> Int {
+        try db.transaction {
+            let n = try db.query(
+                "SELECT COUNT(*) FROM hosts WHERE project = ?", [.text(name)])
+            try db.execute(
+                "UPDATE hosts SET project = '', updated_at = ? WHERE project = ?",
+                [.real(now().timeIntervalSince1970), .text(name)])
+            try db.execute("DELETE FROM host_folders WHERE name = ?", [.text(name)])
+            if case .int(let c)? = n.first?.first { return Int(c) }
+            return 0
+        }
+    }
+
+    /// Chuyển host vào thư mục (`nil`/rỗng = Chưa phân loại). Thư mục dùng cách viết sẵn có nếu trùng tên.
+    public func moveHosts(ids: [UUID], toFolder rawName: String?) throws {
+        let trimmed = rawName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        try db.transaction {
+            var target = ""
+            if !trimmed.isEmpty {
+                let name = try HostFolders.normalize(trimmed)
+                target = try matchingFolder(name, excluding: nil) ?? name
+            }
+            for id in ids {
+                guard let stored = try self.host(id: id) else {
+                    throw HostRepositoryError.notFound(id)
+                }
+                try keepFolder(stored.project, ifLeftBy: target)
+                try db.execute(
+                    "UPDATE hosts SET project = ?, updated_at = ? WHERE id = ?",
+                    [.text(target), .real(now().timeIntervalSince1970), .text(id.uuidString)])
+            }
+        }
+    }
+
+    /// Host rời thư mục cũ thì thư mục đó vẫn được giữ lại (kể cả khi thành rỗng).
+    private func keepFolder(_ old: String, ifLeftBy new: String) throws {
+        guard !old.isEmpty, old != new else { return }
+        try db.execute("INSERT OR IGNORE INTO host_folders(name) VALUES (?)", [.text(old)])
+    }
+
+    /// Thư mục đã có trùng `name` (không phân biệt hoa thường/dấu), bỏ qua đúng tên `excluding`.
+    private func matchingFolder(_ name: String, excluding: String?) throws -> String? {
+        try folders().first { $0 != excluding && HostFolders.sameFolder($0, name) }
     }
 
     /// Tìm không phân biệt hoa thường/dấu theo displayName, hostName, user, tags, project.
@@ -84,6 +173,7 @@ public actor HostRepository {
                 throw HostRepositoryError.notFound(host.id)
             }
             try checkJump(host)
+            try keepFolder(stored.project, ifLeftBy: host.project)
             var saved = host
             saved.createdAt = stored.createdAt
             saved.updatedAt = now()

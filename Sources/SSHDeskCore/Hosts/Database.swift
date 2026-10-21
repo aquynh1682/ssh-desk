@@ -89,6 +89,10 @@ public final class Database: @unchecked Sendable {
             """,
             "CREATE INDEX idx_transfer_jobs_seq ON transfer_jobs(seq)",
         ]),
+        // v3: thư mục rỗng (chưa có host nào). Thư mục có host suy ra từ hosts.project.
+        Migration(statements: [
+            "CREATE TABLE host_folders (name TEXT PRIMARY KEY NOT NULL)"
+        ]),
     ]
 
     private static let sqliteMagic = Data("SQLite format 3\0".utf8)

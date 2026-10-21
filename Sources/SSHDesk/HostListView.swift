@@ -115,7 +115,18 @@ struct HostListView: View {
             columnHeader
             Divider().overlay(Theme.divider)
             let hosts = model.visibleHosts
-            if hosts.isEmpty {
+            if model.isGroupedTable && (!hosts.isEmpty || !model.folders.isEmpty) {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(model.tableGroups, id: \.name) { group in
+                            groupHeader(group)
+                            if !model.collapsedGroups.contains(group.name) {
+                                ForEach(group.hosts) { host in row(host) }
+                            }
+                        }
+                    }
+                }
+            } else if hosts.isEmpty {
                 noResults.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
@@ -138,8 +149,34 @@ struct HostListView: View {
         .onKeyPress(.downArrow) { moveSelection(1) }
     }
 
+    private func groupHeader(_ group: HostGroup) -> some View {
+        let collapsed = model.collapsedGroups.contains(group.name)
+        return Button {
+            model.toggleGroup(group.name)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 10, weight: .bold)).frame(width: 14)
+                Image(systemName: group.isUncategorized ? "tray" : "folder")
+                    .foregroundStyle(Theme.textSecondary)
+                Text(group.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                Text("\(group.hosts.count)").font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary).monospacedDigit()
+                Spacer()
+            }
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.rowHover)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(collapsed ? "Mở nhóm" : "Thu gọn nhóm")
+        .accessibilityLabel("\(group.title), \(group.hosts.count) máy chủ, \(collapsed ? "đang thu gọn" : "đang mở")")
+    }
+
     private func moveSelection(_ delta: Int) -> KeyPress.Result {
-        let hosts = model.visibleHosts
+        let hosts = model.navigableHosts
         guard !hosts.isEmpty else { return .ignored }
         let current = hosts.firstIndex { $0.id == model.selection }
         let next = current.map { min(hosts.count - 1, max(0, $0 + delta)) } ?? 0
@@ -230,6 +267,10 @@ struct HostListView: View {
             }
         )
         .contextMenu { hostActions(host) }
+        .onDrag {
+            model.selection = host.id
+            return NSItemProvider(object: HostFolders.dragPayload([host.id]) as NSString)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -239,6 +280,18 @@ struct HostListView: View {
         Button("Mở Warp") { Task { await model.openInWarp(host) } }
         Button("Copy lệnh SSH") { Task { await model.copySSHCommand(host) } }
         Divider()
+        if !model.folders.isEmpty {
+            Menu("Chuyển vào thư mục") {
+                ForEach(model.folders, id: \.self) { f in
+                    Button(f) { Task { await model.moveHosts([host.id], toFolder: f) } }
+                        .disabled(host.project == f)
+                }
+                if !host.project.isEmpty {
+                    Divider()
+                    Button("Chưa phân loại") { Task { await model.moveHosts([host.id], toFolder: nil) } }
+                }
+            }
+        }
         Button("Sửa…") { model.form = .edit(host) }
         Button("Xoá…", role: .destructive) { model.pendingDelete = host }
     }

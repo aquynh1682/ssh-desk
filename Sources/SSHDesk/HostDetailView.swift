@@ -121,7 +121,7 @@ struct HostDetailView: View {
         if hasInfo {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Thông tin").font(.system(size: 14, weight: .semibold))
-                if !host.project.isEmpty { info("Dự án", host.project) }
+                if !host.project.isEmpty { info("Thư mục", host.project) }
                 if !host.tags.isEmpty { info("Tags", host.tags.joined(separator: ", ")) }
                 if !host.notes.isEmpty { info("Ghi chú", host.notes) }
                 ForEach(Array(host.remoteBookmarks.enumerated()), id: \.offset) { _, b in
