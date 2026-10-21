@@ -35,6 +35,12 @@ struct ServerGlyph: View {
     }
 }
 
+/// Quyết định click vào hàng làm gì (thuần, dễ kiểm tra): 1 lần = chọn, 2 lần = mở Warp.
+enum RowTap {
+    enum Action { case select, open }
+    static func action(tapCount: Int) -> Action { tapCount >= 2 ? .open : .select }
+}
+
 /// Cột giữa: tiêu đề, bộ lọc, bảng máy chủ.
 struct HostListView: View {
     @Bindable var model: AppModel
@@ -205,15 +211,24 @@ struct HostListView: View {
         .padding(.horizontal, 14).padding(.vertical, 9)
         .background(selected ? Theme.rowSelected : .clear)
         .contentShape(Rectangle())
-        // Double-click = Mở Warp (primaryAction cũ); click thường = chọn.
-        .onTapGesture(count: 2) {
-            model.selection = host.id
-            Task { await model.openInWarp(host) }
-        }
-        .onTapGesture {
-            model.selection = host.id
-            listFocused = true
-        }
+        // Chọn ngay khi nhấn (không chờ phân biệt double-click); double-click = Mở Warp.
+        // Hai cử chỉ chạy đồng thời để single-click không bị trễ/nuốt. Nút sao và ⋯ tự xử lý click của chúng.
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                if RowTap.action(tapCount: 1) == .select {
+                    model.selection = host.id
+                    listFocused = true
+                }
+            }
+        )
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                if RowTap.action(tapCount: 2) == .open {
+                    model.selection = host.id
+                    Task { await model.openInWarp(host) }
+                }
+            }
+        )
         .contextMenu { hostActions(host) }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])

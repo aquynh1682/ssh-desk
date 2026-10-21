@@ -213,3 +213,28 @@ private struct Env {
     #expect(p.sshConfigAlias == "web-u" && p.connectionMode == .existingSSHConfigAlias)
     #expect(d.errors(basedOn: base).isEmpty)
 }
+
+@Test func draftAuthChoiceMappingAndPasswordValidation() {
+    var d = HostDraft()
+    d.displayName = "x"
+    d.hostName = "h"
+    d.user = "u"
+    d.authChoice = .password
+    #expect(d.profile(basedOn: nil).authMethod == .interactive)
+    #expect(d.errors(basedOn: nil)[.password] == "Nhập mật khẩu.")
+    #expect(d.errors(basedOn: nil, passwordEntered: true).isEmpty)
+    #expect(d.errors(basedOn: nil, hasSavedPassword: true).isEmpty)
+    d.authChoice = .prompt
+    #expect(d.errors(basedOn: nil).isEmpty)
+    #expect(d.profile(basedOn: nil).authMethod == .interactive)
+
+    var h = HostProfile(displayName: "x")
+    h.authMethod = .interactive
+    #expect(HostDraft(host: h, hasSavedPassword: true).authChoice == .password)
+    #expect(HostDraft(host: h, hasSavedPassword: false).authChoice == .prompt)
+    var saved = HostDraft(host: h, hasSavedPassword: true)
+    #expect(!saved.removesStoredPassword(hasSavedPassword: true))
+    saved.authChoice = .agent
+    #expect(saved.removesStoredPassword(hasSavedPassword: true))
+    #expect(!saved.removesStoredPassword(hasSavedPassword: false))
+}

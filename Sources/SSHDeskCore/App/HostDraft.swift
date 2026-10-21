@@ -4,14 +4,39 @@ import Foundation
 /// Không đọc nội dung file key — chỉ giữ đường dẫn.
 public struct HostDraft: Equatable, Sendable {
     public enum Field: Hashable, Sendable {
-        case displayName, hostName, user, port, identityFile, jumpHost, alias, general
+        case displayName, hostName, user, port, identityFile, password, jumpHost, alias, general
     }
 
     public var displayName = ""
     public var hostName = ""
     public var user = ""
     public var portText = "22"
-    public var authMethod: HostAuthMethod = .agent
+    /// Lựa chọn "Xác thực" trên form (ADR-015). `.password` lưu thành `authMethod .interactive` + item Keychain.
+    public enum AuthChoice: Hashable, Sendable {
+        case agent, keyFile, password, prompt
+
+        public var method: HostAuthMethod {
+            switch self {
+            case .agent: return .agent
+            case .keyFile: return .keyFile
+            case .password, .prompt: return .interactive
+            }
+        }
+
+        public static func from(_ method: HostAuthMethod, hasSavedPassword: Bool) -> AuthChoice {
+            switch method {
+            case .agent: return .agent
+            case .keyFile: return .keyFile
+            case .interactive: return hasSavedPassword ? .password : .prompt
+            }
+        }
+    }
+
+    public var authChoice: AuthChoice = .agent
+    public var authMethod: HostAuthMethod {
+        get { authChoice.method }
+        set { authChoice = .from(newValue, hasSavedPassword: false) }
+    }
     public var identityFile = ""
     public var jumpHostID: UUID?
     public var project = ""
@@ -22,12 +47,12 @@ public struct HostDraft: Equatable, Sendable {
 
     public init() {}
 
-    public init(host: HostProfile) {
+    public init(host: HostProfile, hasSavedPassword: Bool = false) {
         displayName = host.displayName
         hostName = host.hostName
         user = host.user
         portText = String(host.port)
-        authMethod = host.authMethod
+        authChoice = .from(host.authMethod, hasSavedPassword: hasSavedPassword)
         identityFile = host.identityFile ?? ""
         jumpHostID = host.jumpHostID
         project = host.project
@@ -59,14 +84,18 @@ public struct HostDraft: Equatable, Sendable {
         h.hostName = hostName.trimmingCharacters(in: .whitespacesAndNewlines)
         h.user = user.trimmingCharacters(in: .whitespacesAndNewlines)
         h.port = Int(portText.trimmingCharacters(in: .whitespaces)) ?? 0
-        h.authMethod = authMethod
-        h.identityFile = authMethod == .keyFile ? identityFile : nil
+        h.authMethod = authChoice.method
+        h.identityFile = authChoice == .keyFile ? identityFile : nil
         h.jumpHostID = jumpHostID
         return h
     }
 
     /// Lỗi theo trường (tiếng Việt). Rỗng = hợp lệ.
-    public func errors(basedOn base: HostProfile?) -> [Field: String] {
+    /// - hasSavedPassword: hồ sơ đang có mật khẩu trong Keychain.
+    /// - passwordEntered: người dùng đã gõ mật khẩu mới.
+    public func errors(
+        basedOn base: HostProfile?, hasSavedPassword: Bool = false, passwordEntered: Bool = false
+    ) -> [Field: String] {
         var result: [Field: String] = [:]
         let isImported = base?.connectionMode == .existingSSHConfigAlias
         if displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -83,9 +112,12 @@ public struct HostDraft: Equatable, Sendable {
             if user.trimmingCharacters(in: .whitespaces).isEmpty {
                 result[.user] = "Cần nhập tên người dùng."
             }
-            if authMethod == .keyFile && identityFile.isEmpty {
+            if authChoice == .keyFile && identityFile.isEmpty {
                 result[.identityFile] = "Hãy chọn file khoá riêng."
             }
+        }
+        if authChoice == .password && !hasSavedPassword && !passwordEntered {
+            result[.password] = "Nhập mật khẩu."
         }
         // Các quy tắc còn lại (ký tự cấm, newline...) lấy từ validate() của model.
         if result.isEmpty {
@@ -95,6 +127,11 @@ public struct HostDraft: Equatable, Sendable {
             } catch { result[.general] = "Dữ liệu không hợp lệ." }
         }
         return result
+    }
+
+    /// Có cần xoá mật khẩu đã lưu khi lưu không: đang có item Keychain mà người dùng chọn kiểu khác "Mật khẩu".
+    public func removesStoredPassword(hasSavedPassword: Bool) -> Bool {
+        hasSavedPassword && authChoice != .password
     }
 
     public static func describe(_ e: HostValidationError) -> (Field, String) {
