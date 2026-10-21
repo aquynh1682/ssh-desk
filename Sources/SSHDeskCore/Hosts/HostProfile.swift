@@ -129,6 +129,33 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         self.lastLaunchRequestedAt = lastLaunchRequestedAt
     }
 
+    /// Bản sao để nhân bản: id mới, tên `<tên> (bản sao)` (thêm số nếu trùng tên đã có), giữ mọi cấu hình.
+    /// Không chép yêu thích, lần mở Warp cuối, credentialReference (mật khẩu xử lý riêng ở service).
+    public func duplicated(newID: UUID = UUID(), now: Date = Date(), existingNames: [String])
+        -> HostProfile
+    {
+        var copy = self
+        copy.id = newID
+        copy.displayName = Self.duplicateName(of: displayName, existingNames: existingNames)
+        copy.isFavorite = false
+        copy.lastLaunchRequestedAt = nil
+        copy.credentialReference = nil
+        copy.createdAt = now
+        copy.updatedAt = now
+        return copy
+    }
+
+    static func duplicateName(of name: String, existingNames: [String]) -> String {
+        let taken = Set(existingNames.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        var candidate = "\(name) (bản sao)"
+        var n = 2
+        while taken.contains(candidate.lowercased()) {
+            candidate = "\(name) (bản sao \(n))"
+            n += 1
+        }
+        return candidate
+    }
+
     /// Alias dùng cho `ssh -F <config app> <alias>`; nil nếu hồ sơ imported thiếu alias.
     public var sshAlias: String? {
         switch connectionMode {

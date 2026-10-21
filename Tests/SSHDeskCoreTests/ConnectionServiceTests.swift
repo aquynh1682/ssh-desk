@@ -238,3 +238,35 @@ private struct Env {
     #expect(saved.removesStoredPassword(hasSavedPassword: true))
     #expect(!saved.removesStoredPassword(hasSavedPassword: false))
 }
+
+@Test func copyPasswordCreatesIndependentKeychainItem() async throws {
+    let dir = HostTempDir()
+    defer { dir.cleanup() }
+    let paths = AppPaths(baseDirectory: dir.url.appendingPathComponent("SSHDesk"))
+    try paths.prepareDirectories()
+    let store = InMemoryCredentialStore()
+    let service = ConnectionService(
+        repository: HostRepository(database: try Database(url: paths.databaseURL)),
+        appConfigURL: paths.sshConfigURL, userConfigPath: nil,
+        launcher: WarpLauncher(
+            tabConfigsDirectory: dir.url.appendingPathComponent("tabs"), handler: FakeWarp()),
+        credentials: store)
+    let src = managedHost()
+    try await service.add(src)
+    let saved = try await service.savePassword(hostID: src.id, password: "s3cret")
+    let copy = saved.duplicated(existingNames: [saved.displayName])
+    #expect(copy.credentialReference == nil)
+    try await service.add(copy)
+    let withPw = try await service.copyPassword(from: src.id, to: copy.id)
+    let copyRef = try #require(withPw?.credentialReference)
+    #expect(copyRef != saved.credentialReference)
+    #expect(store.read(ref: copyRef) == "s3cret")
+    // Xoá password bản sao không ảnh hưởng gốc.
+    try await service.clearPassword(hostID: copy.id)
+    #expect(store.read(ref: saved.credentialReference!) == "s3cret")
+    #expect(!store.exists(ref: copyRef))
+    // Gốc không có password -> không làm gì.
+    let other = managedHost()
+    try await service.add(other)
+    #expect(try await service.copyPassword(from: other.id, to: copy.id) == nil)
+}

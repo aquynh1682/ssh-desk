@@ -100,3 +100,54 @@ import Testing
         #expect(try JSONDecoder().decode(HostProfile.self, from: data) == h)
     }
 }
+
+@Suite struct HostDuplicateTests {
+    @Test func copiesConfigAndResetsPerHostState() {
+        var h = managedHost()
+        h.isFavorite = true
+        h.lastLaunchRequestedAt = Date(timeIntervalSince1970: 5)
+        h.credentialReference = "ref-1"
+        h.project = "Prod"
+        h.environment = .prod
+        h.tags = ["a", "b"]
+        h.notes = "ghi chú"
+        h.authMethod = .keyFile
+        h.identityFile = "/Users/me/.ssh/k"
+        h.jumpHostID = UUID()
+        h.remoteBookmarks = [RemoteBookmark(name: "w", path: "/var/www")]
+        h.defaultLocalDirectory = "/tmp"
+        h.defaultRemoteDirectory = "/srv"
+        let newID = UUID()
+        let now = Date(timeIntervalSince1970: 99)
+        let c = h.duplicated(newID: newID, now: now, existingNames: [h.displayName])
+        #expect(c.id == newID && c.id != h.id)
+        #expect(c.displayName == "\(h.displayName) (bản sao)")
+        #expect(!c.isFavorite && c.lastLaunchRequestedAt == nil && c.credentialReference == nil)
+        #expect(c.createdAt == now && c.updatedAt == now)
+        var expected = h
+        expected.id = newID
+        expected.displayName = c.displayName
+        expected.isFavorite = false
+        expected.lastLaunchRequestedAt = nil
+        expected.credentialReference = nil
+        expected.createdAt = now
+        expected.updatedAt = now
+        #expect(c == expected)
+    }
+
+    @Test func importedKeepsAlias() {
+        let c = importedHost().duplicated(existingNames: [])
+        #expect(c.connectionMode == .existingSSHConfigAlias)
+        #expect(c.sshConfigAlias == importedHost().sshConfigAlias)
+    }
+
+    @Test func nameSuffixIncrementsOnCollision() {
+        let h = managedHost()
+        let base = h.displayName
+        let n1 = "\(base) (bản sao)"
+        let n2 = "\(base) (bản sao 2)"
+        #expect(h.duplicated(existingNames: [base, n1]).displayName == n2)
+        #expect(h.duplicated(existingNames: [base, n1, n2]).displayName == "\(base) (bản sao 3)")
+        #expect(h.duplicated(existingNames: [n1.uppercased()]).displayName == n2)
+    }
+}

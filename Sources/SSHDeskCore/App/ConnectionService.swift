@@ -120,6 +120,18 @@ public actor ConnectionService {
         return host
     }
 
+    /// Nhân bản mật khẩu: đọc từ item của `sourceID`, ghi thành item Keychain MỚI (ref mới) cho `hostID`.
+    /// Không có password gốc thì không làm gì. Password chỉ đi qua biến cục bộ.
+    @discardableResult
+    public func copyPassword(from sourceID: UUID, to hostID: UUID) async throws -> HostProfile? {
+        guard let credentials,
+            let source = try await repository.host(id: sourceID),
+            let sourceRef = source.credentialReference,
+            let password = credentials.read(ref: sourceRef)
+        else { return nil }
+        return try await savePassword(hostID: hostID, password: password)
+    }
+
     private func alias(of host: HostProfile) throws -> String {
         guard let alias = repository.sshAlias(for: host) else {
             throw ConnectionServiceError.missingAlias

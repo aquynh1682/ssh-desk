@@ -63,6 +63,11 @@ struct HostDetailView: View {
             Spacer(minLength: 0)
             Menu {
                 Button("Sửa…") { model.form = .edit(host) }
+                Button {
+                    model.beginDuplicate(host)
+                } label: {
+                    Label("Nhân bản…", systemImage: "plus.square.on.square")
+                }
                 Button("Copy lệnh SSH") { Task { await model.copySSHCommand(host) } }
                 Button("Cài key…") { model.keys.pickKeyForHost = host }
                 Divider()

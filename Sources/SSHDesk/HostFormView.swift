@@ -18,8 +18,12 @@ struct HostFormView: View {
     @Local private var passwordInput = ""
     @Local private var hasSavedPassword = false
     @Local private var creatingFolder = false
+    /// Host gốc khi đang nhân bản (nil = thêm/sửa thường).
+    @Local private var duplicateSource: HostProfile?
+    @FocusState private var nameFocused: Bool
 
-    private var isNew: Bool { base == nil }
+    private var isDuplicate: Bool { duplicateSource != nil }
+    private var isNew: Bool { base == nil || isDuplicate }
     private var isImported: Bool { base?.connectionMode == .existingSSHConfigAlias }
     private var errors: [HostDraft.Field: String] {
         draft.errors(
@@ -29,6 +33,11 @@ struct HostFormView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if isDuplicate {
+                Text("Nhân bản máy chủ").font(.headline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20).padding(.top, 14)
+            }
             Form {
                 if isImported, let b = base {
                     Section {
@@ -42,6 +51,7 @@ struct HostFormView: View {
                 Section("Thông tin chính") {
                     field("Tên", .displayName) {
                         TextField("Tên", text: $draft.displayName, prompt: Text("Web production"))
+                            .focused($nameFocused)
                     }
                     if !isImported {
                         LabeledContent("Kiểu kết nối") {
@@ -88,7 +98,7 @@ struct HostFormView: View {
                 Spacer()
                 Button("Huỷ") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Lưu") {
-                    if draft.removesStoredPassword(hasSavedPassword: hasSavedPassword) {
+                    if !isDuplicate && draft.removesStoredPassword(hasSavedPassword: hasSavedPassword) {
                         confirmRemoveOnSave = true
                     } else {
                         Task { await save() }
@@ -142,7 +152,10 @@ struct HostFormView: View {
         if draft.authChoice == .password {
             if hasSavedPassword && !changingPassword {
                 HStack {
-                    Label("Đã lưu mật khẩu", systemImage: "checkmark.shield")
+                    Label(
+                        duplicateSource.map { "Đã lưu mật khẩu (sao từ \($0.displayName))" }
+                            ?? "Đã lưu mật khẩu",
+                        systemImage: "checkmark.shield")
                     Spacer()
                     Button("Đổi") { changingPassword = true }
                     Button("Xoá") { confirmClear = true }
@@ -169,6 +182,14 @@ struct HostFormView: View {
     }
 
     private func clearSavedPassword() async {
+        // Nhân bản: bản sao chưa có item nào, chỉ bỏ ý định sao chép (không đụng Keychain của host gốc).
+        if isDuplicate {
+            hasSavedPassword = false
+            changingPassword = false
+            passwordInput = ""
+            if draft.authChoice == .password { draft.authChoice = .prompt }
+            return
+        }
         guard let b = base, let updated = await model.clearPassword(hostID: b.id) else { return }
         base = updated
         hasSavedPassword = false
@@ -209,6 +230,19 @@ struct HostFormView: View {
     private func load() {
         guard !loaded else { return }
         loaded = true
+        if case .duplicate(let source, let copy) = target {
+            duplicateSource = source
+            base = copy
+            hasSavedPassword = model.hasStoredPassword(source)
+            draft = HostDraft(host: copy, hasSavedPassword: hasSavedPassword)
+            showAdvanced = true
+            nameFocused = true
+            // Bôi đen tên sau khi ô nhận focus để gõ là thay luôn.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+            }
+        }
         if case .edit(let h) = target {
             base = h
             hasSavedPassword = model.hasStoredPassword(h)
@@ -282,8 +316,11 @@ struct HostFormView: View {
         // Lấy giá trị ra rồi xoá khỏi state ngay: không giữ password trong view sau khi lưu.
         let password = draft.authChoice == .password && !passwordInput.isEmpty ? passwordInput : nil
         passwordInput = ""
-        let removeStored = draft.removesStoredPassword(hasSavedPassword: hasSavedPassword)
-        if await model.save(profile, isNew: isNew, password: password) {
+        let removeStored =
+            !isDuplicate && draft.removesStoredPassword(hasSavedPassword: hasSavedPassword)
+        let copyFrom =
+            isDuplicate && hasSavedPassword && draft.authChoice == .password ? duplicateSource?.id : nil
+        if await model.save(profile, isNew: isNew, password: password, copyPasswordFrom: copyFrom) {
             if removeStored { _ = await model.clearPassword(hostID: profile.id) }
             dismiss()
         }

@@ -145,6 +145,11 @@ struct HostListView: View {
             Task { await model.openInWarp(host) }
             return .handled
         }
+        .onKeyPress(keys: [KeyEquivalent("d")]) { press in
+            guard press.modifiers == .command, let host = model.selectedHost else { return .ignored }
+            model.beginDuplicate(host)
+            return .handled
+        }
         .onKeyPress(.upArrow) { moveSelection(-1) }
         .onKeyPress(.downArrow) { moveSelection(1) }
     }
@@ -293,6 +298,11 @@ struct HostListView: View {
             }
         }
         Button("Sửa…") { model.form = .edit(host) }
+        Button {
+            model.beginDuplicate(host)
+        } label: {
+            Label("Nhân bản…", systemImage: "plus.square.on.square")
+        }
         Button("Xoá…", role: .destructive) { model.pendingDelete = host }
     }
 

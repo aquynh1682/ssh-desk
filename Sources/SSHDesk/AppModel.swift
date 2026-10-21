@@ -25,9 +25,12 @@ enum SidebarItem: Hashable {
 enum FormTarget: Identifiable {
     case new
     case edit(HostProfile)
+    /// Nhân bản: `source` là host gốc, `copy` là bản nháp đã điền sẵn (chưa lưu).
+    case duplicate(source: HostProfile, copy: HostProfile)
     var id: String {
         switch self {
         case .new: return "new"
+        case .duplicate(_, let copy): return "dup-" + copy.id.uuidString
         case .edit(let h): return h.id.uuidString
         }
     }
@@ -305,10 +308,17 @@ final class AppModel {
 
     /// Trả true nếu lưu thành công (form đóng).
     /// `password`: nếu có thì ghi vào Keychain sau khi lưu hồ sơ (chuỗi này không được giữ lại ở đâu cả).
-    func save(_ host: HostProfile, isNew: Bool, password: String? = nil) async -> Bool {
+    func save(
+        _ host: HostProfile, isNew: Bool, password: String? = nil, copyPasswordFrom: UUID? = nil
+    ) async -> Bool {
         guard let service else { return false }
         do {
             if isNew { try await service.add(host) } else { try await service.update(host) }
+            if password == nil, let copyPasswordFrom {
+                do { try await service.copyPassword(from: copyPasswordFrom, to: host.id) } catch {
+                    show(error, title: "Đã lưu hồ sơ nhưng không sao chép được mật khẩu")
+                }
+            }
             if let password, !password.isEmpty {
                 do { try await service.savePassword(hostID: host.id, password: password) } catch {
                     show(error, title: "Đã lưu hồ sơ nhưng không lưu được mật khẩu vào Keychain")
@@ -335,6 +345,12 @@ final class AppModel {
             show(error, title: "Không xoá được mật khẩu")
             return nil
         }
+    }
+
+    /// Mở form nhân bản (chưa tạo gì; Keychain chỉ được chạm khi bấm Lưu).
+    func beginDuplicate(_ host: HostProfile) {
+        let copy = host.duplicated(existingNames: hosts.map(\.displayName))
+        form = .duplicate(source: host, copy: copy)
     }
 
     func hasStoredPassword(_ host: HostProfile) -> Bool {
