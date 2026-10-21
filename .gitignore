@@ -6,3 +6,4 @@ DerivedData/
 .DS_Store
 .claude/settings.local.json
 build/
+.claude/worktrees/

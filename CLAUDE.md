@@ -14,6 +14,7 @@ App macOS native (cá nhân) quản lý hồ sơ máy chủ, mở SSH trong Warp
 - **`researcher` (Haiku):** đọc file, tra tài liệu, kiểm chứng hành vi công cụ bằng lệnh chỉ đọc.
 - Quyết định mới hoặc đổi quyết định → PM ghi vào `docs/architecture.md` trước, rồi mới giao code.
 - Task chỉ được tính xong khi PM đã review và `make check` xanh.
+- Agent chạy với `isolation: worktree` được tạo từ **`main`**, không phải nhánh hiện tại → chỉ dùng worktree khi việc không đụng file đã đổi trên nhánh chưa merge, hoặc merge nhánh vào `main` trước.
 
 ## Lệnh
 - `make check` — lint + build + test. **Phải xanh trước khi báo xong việc.**

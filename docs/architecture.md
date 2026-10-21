@@ -141,6 +141,7 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
 ## ADR-015: Phản hồi UI của người dùng (2026-10-21) — Đã chốt
 - **Xác thực gộp một chỗ:** Picker "Xác thực" có 4 lựa chọn: ssh-agent/mặc định · File khoá riêng · **Mật khẩu (lưu trong Keychain)** · Nhập khi kết nối. Chọn "Mật khẩu" → SecureField hiện ngay dưới. Không còn mục "Mật khẩu" riêng. Lưu trữ không đổi schema: "Mật khẩu" = `authMethod .interactive` + `credentialReference` có item Keychain (ánh xạ trong `HostDraft`).
 - **Thư mục server:** dùng lại trường `project`, UI gọi là **"Thư mục"** (một cấp). Sidebar mục "THƯ MỤC" (thay "DỰ ÁN"), bảng máy chủ nhóm theo thư mục (thu gọn được), kéo host vào thư mục ở sidebar để chuyển, nút tạo thư mục.
+- **Đã làm (PM duyệt):** migration v3 `host_folders(name)` giữ thư mục rỗng (thư mục chỉ mất khi xoá bằng menu); tên so khớp không phân biệt hoa thường/dấu, dùng cách viết có sẵn; xoá thư mục không xoá host (về "Chưa phân loại"); đổi tên trùng → hỏi gộp; bảng chỉ nhóm ở "Tất cả máy chủ" khi không lọc/tìm; kéo 1 host mỗi lần.
 - **Click 1 lần = chọn + hiện chi tiết; double-click / Return = Mở Warp.** Không được để cử chỉ double-click làm mất single-click.
 
 ## ADR-016: Project Analyst — bản đồ kết nối giữa các server — Đã chốt (người dùng 2026-10-21)
