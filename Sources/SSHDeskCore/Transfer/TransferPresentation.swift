@@ -136,7 +136,11 @@ public struct PromptPresentation: Sendable, Equatable {
         case .password(let t):
             (title, text, fingerprint, input, note) = ("Cần mật khẩu", t, nil, .secret, nil)
         case .passphrase(let t):
-            (title, text, fingerprint, input, note) = ("Cần passphrase", t, nil, .secret, nil)
+            (title, text, fingerprint, input, note) = (
+                "Cần passphrase", t, nil, .secret,
+                t.lowercased().contains("empty for no passphrase")
+                    ? "Để trống nếu không muốn đặt passphrase. Passphrase không được lưu." : nil
+            )
         case .keyboardInteractive(let t):
             (title, text, fingerprint, input, note) = (
                 "Cần mã xác thực", t, nil, .secret, "Mã không được lưu"

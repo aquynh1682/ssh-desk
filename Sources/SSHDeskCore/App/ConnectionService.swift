@@ -3,6 +3,9 @@ import Foundation
 public enum ConnectionServiceError: Error, Equatable {
     /// Hồ sơ imported thiếu alias.
     case missingAlias
+    /// Hồ sơ imported: app không sửa (cấu hình nằm trong `~/.ssh/config` của người dùng).
+    case importedHostReadOnly
+    case hostNotFound
 }
 
 /// Kết quả import: hồ sơ mới tạo và alias bị bỏ qua vì đã import từ cùng file.
@@ -136,6 +139,16 @@ public actor ConnectionService {
         let saved = try await repository.update(host)
         try await regenerateSSHConfig()
         return saved
+    }
+
+    /// Đổi host managed sang xác thực bằng key file (sau khi cài key). Host imported: từ chối, không sửa.
+    @discardableResult
+    public func useKey(hostID: UUID, privateKeyPath: String) async throws -> HostProfile {
+        guard var host = try await repository.host(id: hostID) else { throw ConnectionServiceError.hostNotFound }
+        guard host.connectionMode == .managed else { throw ConnectionServiceError.importedHostReadOnly }
+        host.authMethod = .keyFile
+        host.identityFile = privateKeyPath
+        return try await update(host)
     }
 
     public func delete(id: UUID) async throws {

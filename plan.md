@@ -36,7 +36,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 
 ## Bước E — Mở rộng (người dùng yêu cầu, sau Bước C)
 - [~] E0 Double-click host = Mở Warp (code xong, chờ thử tay)
-- [ ] E1 Nút "Cài key lên server" (ssh-copy-id qua PTY) — ADR-010
+- [~] E1 Màn SSH Keys + nút "Cài key lên server" (ssh-copy-id qua PTY) — ADR-010, ADR-014 (code xong, PM duyệt; chờ thử tay)
 - [~] E2 Lưu password Keychain + helper SSH_ASKPASS cho Warp — ADR-010 (code xong, PM duyệt; chờ thử với server có password)
 - [ ] E3 Local port forward: lưu danh sách, mở/dừng tunnel — ADR-011
 

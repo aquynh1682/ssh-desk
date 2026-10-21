@@ -75,6 +75,7 @@ struct MainView: View {
             HostFormView(model: model, target: target)
         }
         .sheet(isPresented: $model.showImport) { ImportView(model: model) }
+        .modifier(KeysDialogs(model: model, keys: model.keys))
         .sheet(item: $model.transferSheet) { target in
             switch target {
             case .download(let h): DownloadSheet(model: model, host: h)
@@ -156,6 +157,8 @@ struct MainView: View {
                     Circle().fill(sessions > 0 ? Theme.green : Theme.textTertiary).frame(width: 8, height: 8)
                     Text(BrowserTabPresentation.sessionsText(sessions))
                 }
+            } else if model.sidebar == .keys {
+                Text("\(model.keys.keys.count) key")
             } else {
                 Text("\(model.hosts.count) máy chủ")
             }
@@ -185,8 +188,14 @@ struct MainView: View {
         }
     }
 
+    @ViewBuilder
     private var toolsLayout: some View {
-        FileTransferView(model: model)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if model.sidebar == .keys {
+            KeysView(model: model, keys: model.keys)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            FileTransferView(model: model)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }

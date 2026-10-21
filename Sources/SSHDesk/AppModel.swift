@@ -10,10 +10,11 @@ enum SidebarItem: Hashable {
     case environment(HostEnvironment)
     case project(String)
     case transfers
+    case keys
 
     var isHostSection: Bool {
         switch self {
-        case .transfers: return false
+        case .transfers, .keys: return false
         default: return true
         }
     }
@@ -84,6 +85,8 @@ final class AppModel {
     private(set) var browser: FileBrowserModel?
     /// Keychain thật; ACL tin cậy cả helper `sshdesk-askpass` (nếu tìm thấy trong bundle).
     let credentials: any CredentialStore
+    /// Màn "SSH Keys": liệt kê, tạo, cài key (ADR-014).
+    @ObservationIgnored lazy var keys = KeysModel(app: self)
     private var transferRepository: TransferRepository?
     private var eventsTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -185,7 +188,7 @@ final class AppModel {
             list = HostPresentation.recent(list)
             byRecency = true
         case .project(let p): list = list.filter { $0.project == p }
-        case .transfers: break
+        case .transfers, .keys: break
         }
         list = HostPresentation.filter(list, environment: effectiveEnvironment)
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -202,7 +205,7 @@ final class AppModel {
 
     var columnTitle: String {
         switch sidebar {
-        case .all, .environment, .transfers: return "Máy chủ"
+        case .all, .environment, .transfers, .keys: return "Máy chủ"
         case .favorites: return "Yêu thích"
         case .recent: return "Gần đây"
         case .project(let p): return p
@@ -474,6 +477,13 @@ final class AppModel {
         case HostRepositoryError.referencedAsJumpHost:
             return "Máy này đang là bastion của máy khác."
         case ConnectionServiceError.missingAlias: return "Hồ sơ thiếu alias SSH."
+        case ConnectionServiceError.importedHostReadOnly:
+            return "Máy chủ import từ SSH config: app không sửa cấu hình của máy này."
+        case ConnectionServiceError.hostNotFound: return "Không tìm thấy hồ sơ (có thể đã bị xoá)."
+        case let e as SSHKeyError: return e.description
+        case KeyTaskError.spawnFailed(let s): return "Không chạy được tiến trình: \(s)"
+        case PTYProcessError.helperNotFound:
+            return "Không tìm thấy helper sshdesk-ctty (cần build đầy đủ app)."
         case let e as TransferFormError: return e.issues.map(\.message).joined(separator: "\n")
         case TransferManagerError.hostNotFound: return "Máy chủ không còn tồn tại."
         case TransferManagerError.hostChanged:

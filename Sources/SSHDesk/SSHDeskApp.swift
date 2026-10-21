@@ -20,7 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// duyệt file (`ssh -O exit`) → thoát. Tab không được mở lại ở lần chạy sau.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let model = AppModel.shared
-        guard model.hasActiveTransfers || model.hasOpenSessions else { return .terminateNow }
+        guard model.hasActiveTransfers || model.hasOpenSessions || model.keys.isBusy else {
+            return .terminateNow
+        }
         Task { @MainActor in
             if model.hasActiveTransfers {
                 let alert = NSAlert()
@@ -35,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 await model.shutdownTransfers(cancelRunning: true)
             }
+            await model.keys.shutdown()
             await model.closeAllSessions()
             sender.reply(toApplicationShouldTerminate: true)
         }

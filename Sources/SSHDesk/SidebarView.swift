@@ -36,7 +36,7 @@ struct SidebarView: View {
             }
             Divider().overlay(Theme.divider).padding(.horizontal, 10)
             VStack(alignment: .leading, spacing: 2) {
-                comingSoon("SSH Keys", "key")
+                row("SSH Keys", "key", item: .keys)
                 comingSoon("Cài đặt", "gearshape")
             }
             .padding(10)

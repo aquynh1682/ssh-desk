@@ -126,3 +126,19 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
 - **Upload thư mục trong màn duyệt file: đích = thư mục cha** (`scp -r src host:<remoteDir>`) → thư mục trùng tên được **gộp** (file trùng bị ghi đè, file khác giữ nguyên; kiểm chứng F2). Hộp thoại xung đột ghi rõ "gộp". (Sheet Tải lên cũ ở màn Máy chủ vẫn dùng đích `<dir>/<tên>` → lồng khi trùng, như ADR-008.)
 - Prompt `Password:` trơn (PAM/keyboard-interactive) không khớp mẫu `<user>@<host>'s password:` → không tự điền, người dùng nhập tay.
 - Đóng tab khi còn job của host đó → hỏi xác nhận. Kéo thả dùng UTType riêng khai báo trong Info.plist (chỉ chạy trong .app, không đảm bảo với `swift run`).
+
+## ADR-014: Màn SSH Keys (E1) — Đã chốt
+- Liệt kê key trong `~/.ssh`: chỉ đọc file `*.pub` (tên, loại, comment, fingerprint qua `ssh-keygen -l -f <pub>`); KHÔNG bao giờ đọc nội dung private key. Private key được nhận diện bằng việc tồn tại file cùng tên không có `.pub`.
+- Tạo key mới: `/usr/bin/ssh-keygen -t ed25519 -f <đường dẫn mới> -C <comment>` qua PTY runner; passphrase nhập trong prompt của ssh-keygen (UI SecureField, không lưu); không bao giờ ghi đè file đã tồn tại.
+- Cài key lên server: `/usr/bin/ssh-copy-id -F <config app> -i <pub> <alias>` qua PTY runner + prompt UI (password tự điền theo PasswordAutofillPolicy nếu đã lưu). Sau khi thành công, đề nghị đổi host sang xác thực bằng key đó (người dùng xác nhận).
+- `ssh-copy-id` là script shell của OpenSSH: được chạy như executable (argv), không qua `sh -c`. Bản trên máy hỗ trợ `-F`, `-i`, `-t`, `-f`, `-o`.
+- **Đã làm (E1, PM duyệt):** `Sources/SSHDeskCore/Keys/` (Inventory, Naming, KeyTaskSession, Generator, Installer), màn SSH Keys, "Cài key…" trong menu host.
+- **`-f` (force) khi host managed đang dùng keyFile:** bước lọc của ssh-copy-id đăng nhập được bằng key cũ và báo nhầm "already exist" → bật `-f`. Hệ quả: key đã có sẵn có thể bị thêm dòng trùng trong authorized_keys (vô hại).
+- `-t <path>` chỉ dùng trong test (sshd tạm ở localhost dùng chung home thật). UI không dùng.
+- Symlink `.pub` không được copy/cài; cặp thiếu private vẫn cài được nhưng không đề nghị đổi host sang key.
+- PromptDetector nhận thêm prompt passphrase của `ssh-keygen` (`Enter passphrase (empty for no passphrase):`, `Enter same passphrase again:`).
+
+## ADR-015: Phản hồi UI của người dùng (2026-10-21) — Đã chốt
+- **Xác thực gộp một chỗ:** Picker "Xác thực" có 4 lựa chọn: ssh-agent/mặc định · File khoá riêng · **Mật khẩu (lưu trong Keychain)** · Nhập khi kết nối. Chọn "Mật khẩu" → SecureField hiện ngay dưới. Không còn mục "Mật khẩu" riêng. Lưu trữ không đổi schema: "Mật khẩu" = `authMethod .interactive` + `credentialReference` có item Keychain (ánh xạ trong `HostDraft`).
+- **Thư mục server:** dùng lại trường `project`, UI gọi là **"Thư mục"** (một cấp). Sidebar mục "THƯ MỤC" (thay "DỰ ÁN"), bảng máy chủ nhóm theo thư mục (thu gọn được), kéo host vào thư mục ở sidebar để chuyển, nút tạo thư mục.
+- **Click 1 lần = chọn + hiện chi tiết; double-click / Return = Mở Warp.** Không được để cử chỉ double-click làm mất single-click.

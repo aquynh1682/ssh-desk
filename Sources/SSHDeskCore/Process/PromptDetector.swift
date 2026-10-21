@@ -45,7 +45,11 @@ public struct PromptDetector: Sendable {
         guard !last.isEmpty else { return nil }
         let lower = last.lowercased()
 
-        if lower.hasPrefix("enter passphrase for"), last.hasSuffix(":") {
+        // `enter passphrase for <key>:` (ssh) và `Enter passphrase (empty for no passphrase):` /
+        // `Enter same passphrase again:` (ssh-keygen khi tạo key).
+        if lower.hasPrefix("enter passphrase") || lower.hasPrefix("enter same passphrase"),
+            last.hasSuffix(":")
+        {
             buffer = ""
             return .passphrase(Self.clip(last))
         }

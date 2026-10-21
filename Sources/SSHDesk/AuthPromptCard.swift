@@ -17,6 +17,13 @@ struct ActivePrompt: Identifiable {
 extension AppModel {
     /// Prompt của job (xếp hàng theo thứ tự) trước, rồi tới prompt của các tab.
     var activePrompt: ActivePrompt? {
+        if let kind = keys.pendingPrompt, let task = keys.task {
+            return ActivePrompt(
+                id: "key-" + task.context, kind: kind, context: task.context, waiting: 0,
+                cancelTitle: "Huỷ tác vụ",
+                send: { [weak self] text, secret in self?.keys.respond(text: text, isSecret: secret) },
+                cancel: { [weak self] in self?.keys.cancelTask() })
+        }
         let tabPrompts = (browser?.tabs ?? []).filter { $0.pendingPrompt != nil }
         let total = prompts.items.count + tabPrompts.count
         if let p = prompts.current {

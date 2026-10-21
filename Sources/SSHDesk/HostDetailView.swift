@@ -64,6 +64,7 @@ struct HostDetailView: View {
             Menu {
                 Button("Sửa…") { model.form = .edit(host) }
                 Button("Copy lệnh SSH") { Task { await model.copySSHCommand(host) } }
+                Button("Cài key…") { model.keys.pickKeyForHost = host }
                 Divider()
                 Button("Xoá…", role: .destructive) { model.pendingDelete = host }
             } label: {
