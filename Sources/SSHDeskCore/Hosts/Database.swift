@@ -93,6 +93,53 @@ public final class Database: @unchecked Sendable {
         Migration(statements: [
             "CREATE TABLE host_folders (name TEXT PRIMARY KEY NOT NULL)"
         ]),
+        // v4: lịch sử Project Analyst (ADR-016). Không FK tới hosts (đọc được sau khi xoá server);
+        // không lưu stdout/stderr thô. Xoá một lần chạy xoá luôn server/luồng của nó (CASCADE).
+        Migration(statements: [
+            """
+            CREATE TABLE analyst_runs (
+                id TEXT PRIMARY KEY NOT NULL,
+                folder_name TEXT NOT NULL,
+                started_at REAL NOT NULL,
+                finished_at REAL NOT NULL,
+                status TEXT NOT NULL,
+                warnings_json TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX idx_analyst_runs_folder ON analyst_runs(folder_name, started_at)",
+            """
+            CREATE TABLE analyst_servers (
+                run_id TEXT NOT NULL REFERENCES analyst_runs(id) ON DELETE CASCADE,
+                seq INTEGER NOT NULL,
+                host_id TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                collected INTEGER NOT NULL,
+                addresses_json TEXT NOT NULL,
+                listening_json TEXT NOT NULL,
+                external_connections INTEGER NOT NULL
+            )
+            """,
+            "CREATE INDEX idx_analyst_servers_run ON analyst_servers(run_id)",
+            """
+            CREATE TABLE analyst_flows (
+                run_id TEXT NOT NULL REFERENCES analyst_runs(id) ON DELETE CASCADE,
+                seq INTEGER NOT NULL,
+                source_host_id TEXT NOT NULL,
+                dest_host_id TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                observed_connections INTEGER NOT NULL,
+                dest_ips_json TEXT NOT NULL,
+                source_processes_json TEXT NOT NULL,
+                outcome TEXT NOT NULL,
+                outcome_detail TEXT,
+                latency_ms INTEGER,
+                dest_check TEXT,
+                dest_bind TEXT,
+                evidence_json TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX idx_analyst_flows_run ON analyst_flows(run_id)",
+        ]),
     ]
 
     private static let sqliteMagic = Data("SQLite format 3\0".utf8)

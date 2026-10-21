@@ -66,12 +66,17 @@ public actor ConnectivityTester {
         self.maxParallel = max(1, min(maxParallel, Self.defaultMaxParallel))
     }
 
-    public func run(flows: [TopologyFlow]) async -> [FlowTestResult] {
+    /// `progress(đã xong, tổng)` được gọi sau mỗi cạnh. Task bị huỷ thì không khởi chạy thêm cạnh mới;
+    /// kết quả trả về chỉ gồm các cạnh đã chạy.
+    public func run(
+        flows: [TopologyFlow], progress: (@Sendable (Int, Int) -> Void)? = nil
+    ) async -> [FlowTestResult] {
         let executors = self.executors
         // Kiểm tra LISTEN của đích: mỗi (đích, cổng) một lần, tuần tự.
         var checks: [Flow: DestinationCheck] = [:]
         var socketCache: [UUID: [SocketRecord]?] = [:]
         for tf in flows {
+            if Task.isCancelled { return [] }
             let dest = tf.flow.destination
             if socketCache[dest] == nil {
                 socketCache[dest] = await Self.fetchSockets(executors[dest])
@@ -97,9 +102,12 @@ public actor ConnectivityTester {
                 next += 1
                 inFlight += 1
             }
+            var done = 0
             while let (i, r) = await group.next() {
                 results[i] = r
-                if next < flows.count {
+                done += 1
+                progress?(done, flows.count)
+                if next < flows.count, !Task.isCancelled {
                     launch(next)
                     next += 1
                 }
