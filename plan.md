@@ -1,0 +1,51 @@
+# Plan
+
+Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[x]` khi xong.
+
+## Giai đoạn 0 — Nền móng
+- [x] Context: CLAUDE.md, docs/spec.md, docs/architecture.md, plan.md, progress.md
+- [x] Harness: SwiftPM, `make check`, hook format, permissions
+- [x] Đội agent: `coder` (Sonnet), `researcher` (Haiku), PM (Opus)
+- [x] Chốt spec + ADR từ `CLAUDE_CODE_SSH_DESK_PROMPT.md`
+
+## Bước A — Kiểm chứng tích hợp
+- [x] A1 (researcher): kiểm chứng ADR-006 bằng config tạm + `ssh -G` (ProxyJump có truyền `-F`, thứ tự ưu tiên, Match all + Include)
+- [x] A2 (researcher): scp/sftp OpenSSH 10 — glob remote, cách giữ đường dẫn literal, prompt xác thực
+- [x] A3 (coder): đổi tên package → SSHDesk/SSHDeskCore; script `scripts/build-app.sh` ra `build/SSH Desk.app`
+- [x] A4 (coder): SSHConfigWriter (Match all, -F tuyệt đối, cấm newline/ctrl) + quoting/validation + test
+- [x] A5 (coder): WarpLauncher (TOML + URI) + test; thử mở Warp thật với 1 Tab Config (thủ công)
+- [x] A6 (coder): OpenSSHProcessRunner qua PTY + test với process giả lập (không cần server)
+- [x] PM chốt ADR-008, ghi giới hạn phát hiện được
+
+- [x] A7 (người dùng + PM): thử mở Warp thật với 1 Tab Config do app sinh; xác nhận URI mở đúng tab (đóng `[~]` của A5)
+
+## Bước B — Hồ sơ máy chủ
+- [x] B1 SQLite + migration + HostRepository + test
+- [x] B2 Import alias từ ~/.ssh/config (chỉ đọc, Include có giới hạn độ sâu) + test
+- [~] B3 UI (code xong, PM duyệt; chờ người dùng thử tay 14 kịch bản): sidebar, tìm kiếm, danh sách, chi tiết, form hồ sơ, Mở Warp / Copy lệnh
+
+## Bước C — Truyền file
+- [x] C1 TransferJob + state machine + TransferRepository + test
+- [x] C2 TransferManager: queue, huỷ, retry, file tạm, recovery "Bị gián đoạn"
+- [x] C2b Sửa PTYProcess cấp controlling tty thật + bỏ trampoline sh trong TransferManager
+- [~] C3+C4 (code xong, chờ thử với server test thật) Auth prompt UI (password/passphrase/MFA, host key mới/đổi)
+- [~] C4 UI Tải về / Tải lên / Queue / Lịch sử
+
+## Giao diện (người dùng yêu cầu)
+- [~] UI1 Logo/icon + giao diện theo mockup (ADR-012) — code xong, PM duyệt build/test; chờ người dùng xem app. Còn: form/import/prompt/màn lỗi DB chưa theo Theme.
+
+## Bước E — Mở rộng (người dùng yêu cầu, sau Bước C)
+- [~] E0 Double-click host = Mở Warp (code xong, chờ thử tay)
+- [ ] E1 Nút "Cài key lên server" (ssh-copy-id qua PTY) — ADR-010
+- [~] E2 Lưu password Keychain + helper SSH_ASKPASS cho Warp — ADR-010 (code xong, PM duyệt; chờ thử với server có password)
+- [ ] E3 Local port forward: lưu danh sách, mở/dừng tunnel — ADR-011
+
+## Bước F — Duyệt file kiểu Xftp (ADR-013, người dùng yêu cầu)
+- [x] R1 (researcher) spike ControlMaster + sftp liệt kê/mkdir/rename/rm + scp dùng chung socket
+- [x] F1 Core: RemoteSession (master), RemoteFileService (list/mkdir/rename/rm), LocalFileService
+- [~] F2 (code xong, PM duyệt; chờ thử với server test) UI 2 khung + tab server + kéo thả → TransferManager
+
+## Bước D — Hoàn thiện
+- [ ] D1 Keychain CredentialStore, import/export metadata
+- [ ] D2 Vòng đời app (thoát khi đang truyền), empty states, shortcut
+- [ ] D3 README.md, ARCHITECTURE.md, TESTING.md, KNOWN_LIMITATIONS.md; build `.app`
