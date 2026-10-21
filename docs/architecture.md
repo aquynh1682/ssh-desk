@@ -156,3 +156,11 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
 - **Linux only.** Server không có `ss`/`bash`/`timeout` → báo rõ.
 - **PROD:** project có server PROD → hộp xác nhận liệt kê đúng các lệnh sẽ chạy trên từng server, mỗi lần.
 - Lưu lịch sử các lần chạy (DB migration mới, sau migration thư mục), xuất báo cáo (Markdown/CSV). Không lưu output thô có thể chứa thông tin nhạy cảm ngoài các trường đã parse.
+- **Đã làm (G1, PM duyệt):** `Sources/SSHDeskCore/Analyst/`. Quyết định:
+  - Lệnh remote thêm `-o ControlMaster=no` (master chết thì không tự dựng master mới).
+  - IPv6: chỉ probe qua `nc -6` (chưa chắc bash `/dev/tcp` hỗ trợ IPv6).
+  - `nc` exit 1 không có thông điệp → "không phân biệt được timeout hay bị từ chối" (không đoán `refused`).
+  - Topology: bỏ ESTAB có cổng local = cổng LISTEN của chính server (kết nối đến); đích không thu thập được vẫn tạo cạnh với `destinationVerified=false`; đích đã thu thập mà không LISTEN khớp → không tạo cạnh; chỉ HostName là IP literal mới dùng để ánh xạ.
+  - Báo cáo CSV theo RFC 4180, chặn CSV injection (`= + - @` → thêm `'`); không xuất stderr thô.
+  - Chưa kiểm chứng trên Linux thật (fixture `ss`/`ip` tự viết theo định dạng iproute2).
+- **Schema lịch sử (G2, migration v4):** `analyst_runs(id, folder_name, started_at, finished_at, status, warnings_json)`, `analyst_servers(run_id FK CASCADE, host_id, display_name, collected, addresses_json, listening_json, external_connections)`, `analyst_flows(run_id FK CASCADE, source_host_id, dest_host_id, port, observed_connections, dest_ips_json, source_processes_json, outcome, outcome_detail (chuỗi chuẩn hoá), latency_ms, dest_check, dest_bind, evidence_json)`. Không FK cứng tới `hosts` (lịch sử đọc được khi xoá server); không lưu stdout/stderr thô.
