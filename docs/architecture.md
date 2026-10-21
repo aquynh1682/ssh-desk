@@ -142,3 +142,16 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
 - **Xác thực gộp một chỗ:** Picker "Xác thực" có 4 lựa chọn: ssh-agent/mặc định · File khoá riêng · **Mật khẩu (lưu trong Keychain)** · Nhập khi kết nối. Chọn "Mật khẩu" → SecureField hiện ngay dưới. Không còn mục "Mật khẩu" riêng. Lưu trữ không đổi schema: "Mật khẩu" = `authMethod .interactive` + `credentialReference` có item Keychain (ánh xạ trong `HostDraft`).
 - **Thư mục server:** dùng lại trường `project`, UI gọi là **"Thư mục"** (một cấp). Sidebar mục "THƯ MỤC" (thay "DỰ ÁN"), bảng máy chủ nhóm theo thư mục (thu gọn được), kéo host vào thư mục ở sidebar để chuyển, nút tạo thư mục.
 - **Click 1 lần = chọn + hiện chi tiết; double-click / Return = Mở Warp.** Không được để cử chỉ double-click làm mất single-click.
+
+## ADR-016: Project Analyst — bản đồ kết nối giữa các server — Đã chốt (người dùng 2026-10-21)
+- Nguồn: `Resources/Design/project-analyst-mockup.png`. **Project = thư mục server** (ADR-015). Chữ tiếng Việt, theo Theme.
+- **Chỉ lệnh xem, whitelist cố định**, chạy qua SSH dùng master của RemoteSession (`ssh -F <cfg> -o ControlPath=<sock> -o BatchMode=yes -o PreferredAuthentications=none -- <alias> <lệnh>`):
+  - thu thập: `ss -Htanp` (fallback `ss -Htan`), `ip -o addr show` (fallback `hostname -I`), `hostname`.
+  - thử kết nối: `timeout 3 bash -c '</dev/tcp/<ip>/<port>'` (fallback `nc -z -w3 <ip> <port>`) chạy trên server **nguồn**; `<ip>` và `<port>` phải qua validate chặt (IPv4/IPv6 literal, 1–65535) trước khi ghép — không ghép chuỗi nào khác từ người dùng/server.
+  - Không `sudo`, không cài/sửa gì. Dùng đúng quyền user SSH đó (root thấy được tên process; user thường có thể không thấy → hiển thị "không rõ").
+  - Đây là ngoại lệ có chủ đích với ghi chú "không dùng `ssh host -- ...`" của ADR-013 (vốn dành cho duyệt file).
+- **Tự phát hiện hoàn toàn:** ánh xạ IP → server trong project (từ `ip addr` + HostName); cạnh A → B:port khi A có kết nối ESTAB tới IP của B tại port mà B đang LISTEN. Kết nối tới IP ngoài project: không vẽ nút, chỉ đếm trong panel chi tiết. Giới hạn: chỉ thấy kết nối đang mở lúc quét.
+- **Chạy kiểm tra:** với mỗi cạnh, probe TCP từ nguồn (timeout 3 s) + kiểm tra đích đang LISTEN. Kết quả: Passed / Failed (timeout, refused) / Không kiểm tra được (thiếu công cụ, mất phiên). Nguyên nhân chỉ ghi "chưa xác nhận" + bằng chứng, không suy đoán.
+- **Linux only.** Server không có `ss`/`bash`/`timeout` → báo rõ.
+- **PROD:** project có server PROD → hộp xác nhận liệt kê đúng các lệnh sẽ chạy trên từng server, mỗi lần.
+- Lưu lịch sử các lần chạy (DB migration mới, sau migration thư mục), xuất báo cáo (Markdown/CSV). Không lưu output thô có thể chứa thông tin nhạy cảm ngoài các trường đã parse.
