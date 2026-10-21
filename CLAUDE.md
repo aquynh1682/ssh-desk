@@ -18,6 +18,7 @@ App macOS native (cá nhân) quản lý hồ sơ máy chủ, mở SSH trong Warp
 ## Lệnh
 - `make check` — lint + build + test. **Phải xanh trước khi báo xong việc.**
 - `make test` / `make build` / `make lint` / `make format` / `make run`
+- `make install` — build `.app` rồi cài vào `/Applications/SSH Desk.app` (người dùng mở bằng icon). Phải thoát app trước.
 - Không gọi thẳng `swift test`: máy chỉ có Command Line Tools, Makefile thêm cờ plugin cho Swift Testing.
 
 ## Stack & cấu trúc

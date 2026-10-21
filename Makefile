@@ -1,4 +1,4 @@
-.PHONY: build test lint format check run app
+.PHONY: build test lint format check run app install
 
 # Máy chỉ có Command Line Tools (không có Xcode.app): SwiftPM không tự nạp macro plugin
 # của Swift Testing, nên phải trỏ thủ công. Có Xcode đầy đủ thì biến này vô hại.
@@ -26,3 +26,11 @@ run:
 # Đóng gói bản release thành build/SSH Desk.app (ký ad-hoc).
 app:
 	./scripts/build-app.sh
+
+# Cài vào /Applications để mở bằng icon (Launchpad/Spotlight/Dock). Chạy lại để cập nhật.
+INSTALL_APP := /Applications/SSH Desk.app
+install: app
+	@if pgrep -xq SSHDesk; then echo "SSH Desk đang chạy — thoát app (⌘Q) rồi chạy lại make install."; exit 1; fi
+	@if [ -e "$(INSTALL_APP)" ]; then rm -r "$(INSTALL_APP)"; fi
+	ditto "build/SSH Desk.app" "$(INSTALL_APP)"
+	@echo "Đã cài $(INSTALL_APP)"
