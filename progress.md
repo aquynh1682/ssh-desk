@@ -25,6 +25,9 @@ Ghi mới nhất ở trên. Mỗi phiên: làm gì, còn dở gì, bước tiế
 - R1 xong (researcher, sshd tạm 127.0.0.1 đã dọn): ControlMaster dùng chung cho sftp/scp; socket phải ở `/tmp/sshdesk-<uid>` (≤86 byte); rename sftp ghi đè im lặng; không có xoá đệ quy; askpass được gọi cho host key, SSH_ASKPASS_PROMPT unset, BatchMode yes chặn askpass. Đã chuyển các điểm askpass cho E2.
 - E2, F1, F2 xong phần code, PM duyệt: 290 test (make check có thể treo hiếm — đã sửa TempSshd.reap; khi chạy tay bọc `perl -e 'alarm 400; exec @ARGV' make check`). PM phát hiện lỗ hổng tự điền password cho host có bastion trong TransferManager → sửa bằng PasswordAutofillPolicy (F2).
 - **Chờ người dùng thử với server test:** E2 (password lưu → Warp/truyền file), F2 (màn Truyền file, kéo thả, thao tác remote). Chưa có commit nào — đề xuất commit mốc.
+- 2026-10-21 (tiếp): E1 SSH Keys, gộp mật khẩu vào Xác thực + click 1 lần chọn, thư mục server (ADR-015), Project Analyst G1+G2 (ADR-016) — tất cả code xong trên nhánh `feat/e1-ssh-keys`, `make check` xanh 406 test. Có `make install`.
+- Bài học: agent `isolation: worktree` tạo từ `main` → gây xung đột khi gộp (đã ghi CLAUDE.md).
+- **Chờ người dùng thử** (make install): click/double-click, thư mục, SSH Keys, Project Analyst trên server Linux test, E2/F2 với server có password.
 - Sau đó: Bước E còn lại (E1 cài key, E2 Keychain+askpass, E3 local forward), rồi Bước D.
 - Chờ người dùng thử tay B3 (kịch bản trong tin nhắn phiên 1). Chưa xác minh: ⌘F focus, Return mở Warp, sidebar disabled, dark/light.
 - **Tiếp theo (cũ):** Bước B (B1 SQLite/HostRepository, B2 import alias, B3 UI).

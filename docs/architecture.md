@@ -164,3 +164,8 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
   - Báo cáo CSV theo RFC 4180, chặn CSV injection (`= + - @` → thêm `'`); không xuất stderr thô.
   - Chưa kiểm chứng trên Linux thật (fixture `ss`/`ip` tự viết theo định dạng iproute2).
 - **Schema lịch sử (G2, migration v4):** `analyst_runs(id, folder_name, started_at, finished_at, status, warnings_json)`, `analyst_servers(run_id FK CASCADE, host_id, display_name, collected, addresses_json, listening_json, external_connections)`, `analyst_flows(run_id FK CASCADE, source_host_id, dest_host_id, port, observed_connections, dest_ips_json, source_processes_json, outcome, outcome_detail (chuỗi chuẩn hoá), latency_ms, dest_check, dest_bind, evidence_json)`. Không FK cứng tới `hosts` (lịch sử đọc được khi xoá server); không lưu stdout/stderr thô.
+- **Đã làm (G2, PM duyệt):** migration v4 (+ cột `seq` giữ thứ tự), `AnalystRunRepository` (giữ 50 lần/thư mục), `AnalystCoordinator` (mở phiên → thu thập song song ≤4 → thử → lưu; huỷ không lưu), `GraphLayout` (theo lớp, barycenter), UI theo mockup.
+  - **`SessionPool` dùng chung** giữa màn Truyền file và Project Analyst: một master/host. Analyst dùng lại phiên của tab nếu có; phiên Analyst tự mở được đóng sau khi chạy xong (trong lúc đó tab Truyền file cùng host báo "đang dùng").
+  - PROJECTS ở sidebar chỉ hiện trong màn Project Analyst (project = thư mục). Bỏ "Edit flows"/DEMO; không có trường vai trò (FE/BE) nên badge = môi trường.
+  - Hộp xác nhận PROD liệt kê lệnh thu thập + mẫu lệnh probe (IP đích chỉ biết sau khi thu thập).
+  - "Thử lại kết nối" cập nhật chính bản lưu của lần chạy đang xem; lần chạy cũ chỉ đọc. Đổi tên thư mục không đổi tên trong lịch sử cũ.
