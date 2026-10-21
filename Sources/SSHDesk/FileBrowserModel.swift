@@ -47,6 +47,15 @@ final class FileBrowserModel {
     var sessionCount: Int { BrowserTabPresentation.sessionCount(tabs.map(\.state)) }
     var hasOpenSessions: Bool { !tabs.isEmpty }
 
+    /// Phiên của tab được chia sẻ với Project Analyst qua `SessionPool` (không mở master thứ hai).
+    func registerSession(_ session: RemoteSession, hostID: UUID) async {
+        await app?.sessionPool.register(hostID: hostID, session: session, owner: .browser)
+    }
+
+    func unregisterSession(_ session: RemoteSession, hostID: UUID) async {
+        await app?.sessionPool.unregister(hostID: hostID, session: session)
+    }
+
     func prepareConfig() async throws {
         try await app?.service?.regenerateSSHConfig()
     }
@@ -68,6 +77,12 @@ final class FileBrowserModel {
         }
         guard HostPicker.isSelectable(host) else {
             dialog = .error("Không mở được “\(host.displayName)”", "Hồ sơ thiếu alias SSH.")
+            return
+        }
+        if await app?.sessionPool.owner(of: host.id) == .analyst {
+            dialog = .error(
+                "Không mở được “\(host.displayName)”",
+                "Project Analyst đang dùng kết nối của máy này. Hãy thử lại sau khi lần chạy kết thúc.")
             return
         }
         do {

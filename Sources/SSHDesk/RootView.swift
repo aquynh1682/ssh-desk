@@ -159,6 +159,10 @@ struct MainView: View {
                 }
             } else if model.sidebar == .keys {
                 Text("\(model.keys.keys.count) key")
+            } else if model.sidebar == .analyst {
+                Text(
+                    model.analyst.folder.map { "\(model.analyst.hosts.count) máy chủ trong “\($0)”" }
+                        ?? "Project Analyst")
             } else {
                 Text("\(model.hosts.count) máy chủ")
             }
@@ -192,6 +196,9 @@ struct MainView: View {
     private var toolsLayout: some View {
         if model.sidebar == .keys {
             KeysView(model: model, keys: model.keys)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if model.sidebar == .analyst {
+            AnalystView(model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             FileTransferView(model: model)

@@ -24,6 +24,9 @@ extension AppModel {
                 send: { [weak self] text, secret in self?.keys.respond(text: text, isSecret: secret) },
                 cancel: { [weak self] in self?.keys.cancelTask() })
         }
+        if let ap = analyst.activePrompt {
+            return ap
+        }
         let tabPrompts = (browser?.tabs ?? []).filter { $0.pendingPrompt != nil }
         let total = prompts.items.count + tabPrompts.count
         if let p = prompts.current {

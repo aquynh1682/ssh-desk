@@ -11,11 +11,12 @@ enum SidebarItem: Hashable {
     case folder(String)
     case uncategorized
     case transfers
+    case analyst
     case keys
 
     var isHostSection: Bool {
         switch self {
-        case .transfers, .keys: return false
+        case .transfers, .analyst, .keys: return false
         default: return true
         }
     }
@@ -111,6 +112,11 @@ final class AppModel {
     let credentials: any CredentialStore
     /// Màn "SSH Keys": liệt kê, tạo, cài key (ADR-014).
     @ObservationIgnored lazy var keys = KeysModel(app: self)
+    /// Sổ phiên SSH đang sống, dùng chung giữa màn Truyền file và Project Analyst (một master/host).
+    let sessionPool = SessionPool()
+    /// Màn "Project Analyst" (ADR-016).
+    @ObservationIgnored lazy var analyst = AnalystModel(app: self)
+    private(set) var analystRepository: AnalystRunRepository?
     private var transferRepository: TransferRepository?
     private var eventsTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -138,6 +144,7 @@ final class AppModel {
                 userConfigPath: AppPaths.existingUserConfigPath(), launcher: WarpLauncher(),
                 credentials: credentials, askpassHelper: AskpassHelper.defaultURL())
             self.service = service
+            analystRepository = AnalystRunRepository(database: db)
             try await service.regenerateSSHConfig()
             hosts = try await repo.all()
             folders = try await repo.folders()
@@ -241,7 +248,7 @@ final class AppModel {
             byRecency = true
         case .folder(let p): list = list.filter { $0.project == p }
         case .uncategorized: list = list.filter { $0.project.isEmpty }
-        case .transfers, .keys: break
+        case .transfers, .analyst, .keys: break
         }
         list = HostPresentation.filter(list, environment: effectiveEnvironment)
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -258,7 +265,7 @@ final class AppModel {
 
     var columnTitle: String {
         switch sidebar {
-        case .all, .environment, .transfers, .keys: return "Máy chủ"
+        case .all, .environment, .transfers, .analyst, .keys: return "Máy chủ"
         case .favorites: return "Yêu thích"
         case .recent: return "Gần đây"
         case .folder(let p): return p
@@ -291,6 +298,7 @@ final class AppModel {
             folders = try await service.repository.folders()
             if case .folder(let f) = sidebar, !folders.contains(f) { sidebar = .all }
             browser?.hostsChanged(hosts)
+            analyst.foldersChanged()
             if let s = selection, !hosts.contains(where: { $0.id == s }) { selection = nil }
         } catch { show(error, title: "Không đọc được dữ liệu") }
     }
@@ -544,10 +552,13 @@ final class AppModel {
         } catch { show(error, title: "Không xoá được lịch sử") }
     }
 
-    var hasOpenSessions: Bool { browser?.hasOpenSessions ?? false }
+    var hasOpenSessions: Bool { (browser?.hasOpenSessions ?? false) || analyst.isRunning }
 
     /// Dùng khi thoát: đóng mọi master của tab duyệt file (`ssh -O exit`), sau khi job đã xử lý xong.
-    func closeAllSessions() async { await browser?.closeAll() }
+    func closeAllSessions() async {
+        await analyst.shutdown()
+        await browser?.closeAll()
+    }
 
     /// Dùng khi thoát: huỷ job đang chạy rồi dừng manager.
     func shutdownTransfers(cancelRunning: Bool) async {

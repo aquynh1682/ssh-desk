@@ -101,7 +101,10 @@ final class BrowserTab: Identifiable {
     func close() async {
         eventsTask?.cancel()
         pendingPrompt = nil
-        if sessionRan { await session.close() }
+        if sessionRan {
+            await owner.unregisterSession(session, hostID: hostID)
+            await session.close()
+        }
     }
 
     private func apply(_ event: BrowserTabEvent) {
@@ -117,9 +120,10 @@ final class BrowserTab: Identifiable {
             Task { await self.answer(kind, from: source) }
         case .connected:
             pendingPrompt = nil
+            Task { await owner.registerSession(source, hostID: hostID) }
             Task { await self.loadInitialDirectory() }
         case .disconnected:
-            break
+            Task { await owner.unregisterSession(source, hostID: hostID) }
         }
     }
 

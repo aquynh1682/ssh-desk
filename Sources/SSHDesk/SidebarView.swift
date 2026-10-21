@@ -15,17 +15,23 @@ struct SidebarView: View {
                         "Truyền file", "arrow.up.arrow.down", item: .transfers,
                         badge: TransferPresentation.active(model.jobs).count)
                     row("Gần đây", "clock", item: .recent)
+                    analystRow
 
-                    let counts = HostPresentation.environmentCounts(model.hosts)
-                    if !counts.isEmpty {
-                        header("MÔI TRƯỜNG")
-                        ForEach(counts, id: \.environment) { c in
-                            row(
-                                HostPresentation.title(for: c.environment), "server.rack",
-                                item: .environment(c.environment), trailing: "\(c.count)")
+                    if model.sidebar == .analyst {
+                        // PROJECTS thay MÔI TRƯỜNG + THƯ MỤC khi ở Project Analyst: project chính là thư mục.
+                        ProjectsSection(model: model)
+                    } else {
+                        let counts = HostPresentation.environmentCounts(model.hosts)
+                        if !counts.isEmpty {
+                            header("MÔI TRƯỜNG")
+                            ForEach(counts, id: \.environment) { c in
+                                row(
+                                    HostPresentation.title(for: c.environment), "server.rack",
+                                    item: .environment(c.environment), trailing: "\(c.count)")
+                            }
                         }
+                        folderSection
                     }
-                    folderSection
                 }
                 .padding(.horizontal, 10).padding(.top, 12)
             }
@@ -146,6 +152,29 @@ struct SidebarView: View {
             Text("Chưa có thư mục").font(.system(size: 12))
                 .foregroundStyle(Theme.textTertiary).padding(.horizontal, 10)
         }
+    }
+
+    private var analystRow: some View {
+        let selected = model.sidebar == .analyst
+        return Button {
+            model.sidebar = .analyst
+            model.analyst.enter()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "point.3.connected.trianglepath.dotted").frame(width: 20)
+                    .foregroundStyle(selected ? Theme.textPrimary : Theme.textSecondary)
+                Text("Project Analyst").lineLimit(1)
+                Spacer(minLength: 4)
+            }
+            .font(.system(size: 13.5))
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? Theme.rowSelected : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func header(_ text: String, first: Bool = false) -> some View {
@@ -311,6 +340,79 @@ struct FolderNameSheet: View {
             }
             // Đổi tên trùng → model đã chuyển sang hộp thoại hỏi gộp; sheet này đóng như thường.
             if ok { dismiss() }
+        }
+    }
+}
+
+/// Mục PROJECTS (chỉ hiện ở Project Analyst): thư mục dạng cây; mở ra thấy máy chủ, chấm phiên, badge môi trường.
+private struct ProjectsSection: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        let analyst = model.analyst
+        Text("PROJECTS")
+            .font(.system(size: 11, weight: .semibold)).tracking(0.6)
+            .foregroundStyle(Theme.textTertiary)
+            .padding(.horizontal, 10).padding(.top, 16).padding(.bottom, 4)
+        ForEach(model.folderCounts, id: \.name) { c in
+            let open = analyst.expanded.contains(c.name)
+            let selected = analyst.folder == c.name
+            HStack(spacing: 6) {
+                Button {
+                    if open { analyst.expanded.remove(c.name) } else { analyst.expanded.insert(c.name) }
+                } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                        .foregroundStyle(Theme.textSecondary).frame(width: 16, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityLabel(open ? "Thu gọn \(c.name)" : "Mở rộng \(c.name)")
+                Button {
+                    analyst.select(c.name)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder.fill").foregroundStyle(Theme.blue)
+                        Text(c.name).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text("\(c.count)").foregroundStyle(Theme.textSecondary).monospacedDigit()
+                    }
+                    .font(.system(size: 13.5)).foregroundStyle(Theme.textPrimary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 6).padding(.vertical, 6)
+            .background(selected ? Theme.rowSelected : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            if open {
+                let hosts = HostPresentation.sortedByName(
+                    model.hosts.filter { $0.project == c.name }, ascending: true)
+                ForEach(hosts) { h in
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle().fill(analyst.isLive(h.id) ? Theme.green : Theme.textTertiary)
+                            .frame(width: 8, height: 8).padding(.top, 5)
+                            .accessibilityLabel(analyst.isLive(h.id) ? "Đã kết nối" : "Chưa kết nối")
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(h.displayName).font(.system(size: 13)).lineLimit(1)
+                            Text(HostPresentation.addressText(h))
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 4)
+                        Text(HostPresentation.badgeCode(for: h.environment))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(h.environment == .prod ? Theme.amber : Theme.textSecondary)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Theme.rowSelected, in: RoundedRectangle(cornerRadius: 5))
+                    }
+                    .padding(.leading, 28).padding(.trailing, 6).padding(.vertical, 3)
+                    .foregroundStyle(Theme.textPrimary)
+                }
+            }
+        }
+        if model.folderCounts.isEmpty {
+            Text("Chưa có thư mục").font(.system(size: 12))
+                .foregroundStyle(Theme.textTertiary).padding(.horizontal, 10)
         }
     }
 }
