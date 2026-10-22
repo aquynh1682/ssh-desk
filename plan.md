@@ -63,6 +63,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [~] H2 (code xong, PM duyệt; chờ thử tay) Mật khẩu Windows: lưu Keychain, copy tự động khi mở (ADR-018)
 
 ## Bước D — Hoàn thiện
-- [ ] D1 Keychain CredentialStore, import/export metadata
+- [ ] D1 Import/export metadata (Keychain CredentialStore đã có từ E2)
 - [ ] D2 Vòng đời app (thoát khi đang truyền), empty states, shortcut
+- [ ] D4 Màn Cài đặt (spec mục Settings + đề xuất PM: Keychain/clipboard, Analyst, Monitor, Windows App, dữ liệu) — chờ người dùng chốt danh sách
 - [ ] D3 README.md, ARCHITECTURE.md, TESTING.md, KNOWN_LIMITATIONS.md; build `.app`
