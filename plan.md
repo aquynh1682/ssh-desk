@@ -74,6 +74,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [ ] K3 (coder) CLI `sshdesk` (list/open/help) + URL scheme `sshdesk://` có xác nhận — ADR-025
 - [ ] K4r (researcher) Kiểm chứng đọc/tạo `.xlsx` bằng `unzip -p`/`zip` + XMLParser — ADR-026
 - [ ] K4a (coder) Khung nguồn đồng bộ + hold tự điền + Excel mẫu + XLSX/CSV ghép cột, migration v9 — ADR-026
+- [ ] K4c (coder) Hỏi mật khẩu lần đầu + "Lưu vào Keychain" có kiểm tra (Warp/Analyst/Monitor/Truyền file/Windows) — ADR-029
 - [ ] K4b (coder) Nguồn JSON `.sshdesk.json` + Ansible INI/YAML tĩnh — ADR-026
 - [ ] K5r (researcher) Kiểm chứng khoá Secure Enclave macOS 27 / OpenSSH 10.3 — ADR-027
 - [ ] K5 (coder, chỉ khi K5r đạt) Tạo/dùng khoá Secure Enclave — ADR-027

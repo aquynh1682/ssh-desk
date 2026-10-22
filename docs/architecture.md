@@ -327,3 +327,16 @@ Thứ tự làm: ADR-023 → 024 → 025 → 026 → 027 → 028. Migration: v8 
 - Làm mới mỗi 30 giây (15/30/60), chỉ khi màn Monitor đang hiện; timeout 10 giây; phản hồi > 5 MB → bỏ. Lỗi hiện trên thẻ, không lộ header. Log chỉ có URL không query, mã lỗi.
 - Test: `URLProtocol` giả (không mạng) cho parser/escape/header; có thể thêm HTTP server giả trên 127.0.0.1. Không gọi server thật.
 - **Không làm đợt này:** nhật ký phiên cục bộ (tuỳ chọn trong H-7), cảnh báo/thông báo macOS, Grafana link.
+
+## ADR-029: Hỏi mật khẩu lần đầu + "Lưu vào Keychain" — Đã chốt (người dùng đề xuất 2026-10-22, làm ngay sau K4a)
+- **Bối cảnh:** host nhập từ Excel/nguồn chưa có password; askpass hỏi qua `/dev/tty` mỗi lần, không có cách lưu ngay.
+- **Khi nào hiện sheet (Core `MissingPasswordPrompt.decide`, có test bảng):** tất cả điều kiện: host loại SSH; `authMethod == .interactive`; chưa có `credentialReference` (hoặc item Keychain không tồn tại); `jumpHostID == nil`; không `autofill_hold` (ADR-026); Cài đặt "Tự điền mật khẩu đã lưu" bật; Cài đặt mới **"Hỏi mật khẩu khi máy chưa lưu"** (`security.prompt_missing_password`, mặc định bật) bật. Thiếu một điều kiện → luồng cũ (askpass/PTY hỏi như hiện nay).
+- **Sheet "Nhập mật khẩu cho user@host":** SecureField, checkbox **"Lưu vào Keychain"** (mặc định bật), nút "Tiếp tục", "Bỏ qua, nhập trong terminal" (Warp) / "Huỷ". Host PROD: xác nhận PROD trước, rồi mới hiện sheet.
+- **Có tích lưu → kiểm tra trước khi lưu:** kết nối thử ngắn qua PTY dùng `SessionConnector`/`RemoteSession` (mở master `ControlMaster` rồi `-O exit`) với credential **trong bộ nhớ** (CredentialStore tạm, không Keychain), tự điền đúng một lần theo `PasswordAutofillPolicy`. Không `StrictHostKeyChecking=no`; `BatchMode=no`; timeout 20 giây.
+  - Thành công → `ConnectionService.savePassword` (Keychain, ADR-010) → mở Warp như bình thường (askpass tự điền). Master thử được đóng; Analyst/Monitor/Truyền file có thể dùng lại master qua SessionPool thay vì đóng.
+  - Sai mật khẩu (prompt password lần hai hoặc `Permission denied`) → "Sai mật khẩu", cho nhập lại; không lưu.
+  - Gặp prompt host key (máy mới/đổi key) → dừng thử, báo "Chưa xác nhận host key — hãy mở terminal lần đầu (Bỏ qua, nhập trong terminal)"; không tự trả lời yes. Prompt khác (OTP/MFA) → dừng thử, cùng thông báo.
+  - Lỗi mạng/timeout → hỏi "Không kiểm tra được. Vẫn lưu?" — mặc định **Không**.
+- **Không tích lưu:** Warp → không giữ password, mở Warp như hiện nay, người dùng gõ trong terminal (password không qua env/argv/file tạm/Tab Config). Analyst/Monitor/Truyền file → password chỉ trong bộ nhớ cho đúng phiên/job đó (CredentialStore trong bộ nhớ gắn với phiên), bỏ khi phiên đóng; không ghi đâu cả.
+- **Windows (ADR-018):** host Windows chưa có password và bấm Mở → sheet SecureField + "Lưu vào Keychain" (không kiểm tra được) → copy clipboard theo ADR-018; không tích → copy một lần, không lưu.
+- **Rủi ro chấp nhận:** password nằm trong bộ nhớ app (String Swift không xoá được chủ động) trong thời gian phiên — giống luồng PTY hiện có.
