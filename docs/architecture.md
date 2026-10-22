@@ -113,6 +113,7 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
   - Xác thực: tự điền theo `PasswordAutofillPolicy`; prompt khác qua `AuthPromptCard`. Host Windows không có forward.
   - Trạng thái: Dừng / Đang kết nối / Đang chạy / Lỗi (lý do từ stderr đã làm sạch, vd port bận). Trước khi chạy thử bind 127.0.0.1:<lp> để báo "port đang bận". Dừng = SIGTERM process group của đúng phiên đó. Thoát app → dừng mọi tunnel. Không tự chạy lại khi rớt (hiện Lỗi + nút Chạy lại).
   - UI: mục "Port forward" trong chi tiết host (danh sách, thêm/sửa/xoá, Mở/Dừng, copy `127.0.0.1:<lp>`); chỉ báo số tunnel đang chạy ở status bar.
+  - **Đã làm (E3, PM duyệt):** migration **v6** `port_forwards` (local_port UNIQUE), `Sources/SSHDeskCore/Tunnel/`, test tích hợp tunnel thật tới sshd tạm. PM duyệt: "Đang chạy" = cổng local bị ssh giữ (thử bind, không SO_REUSEADDR); timeout kết nối 60 giây; sửa forward phải Dừng trước; host alias import được có forward. **Bổ sung argv:** `-o ServerAliveInterval=30 -o ServerAliveCountMax=3` (phát hiện tunnel chết ngầm; làm cùng D4).
 
 ## ADR-012: Logo + giao diện theo mockup — Đã chốt (người dùng yêu cầu 2026-10-21)
 - Nguồn: `Resources/AppIcon-source.png` (logo), `Resources/Design/main-window-mockup.png` (mockup cửa sổ chính).

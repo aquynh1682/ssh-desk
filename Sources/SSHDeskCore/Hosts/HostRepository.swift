@@ -184,6 +184,38 @@ public actor HostRepository {
         }
     }
 
+    /// Ghi kết quả nhập (ADR-020) trong MỘT transaction: thư mục, máy (bastion trước), port forward.
+    /// Bất kỳ lỗi nào → không ghi gì. Không bao giờ ghi `credentialReference`/lần mở cuối từ file.
+    public func applyImport(_ plan: HostExchange.Plan) throws {
+        try db.transaction {
+            for name in plan.foldersToCreate {
+                let n = try HostFolders.normalize(name)
+                if try matchingFolder(n, excluding: nil) == nil {
+                    try db.execute("INSERT INTO host_folders(name) VALUES (?)", [.text(n)])
+                }
+            }
+            let stamp = now()
+            for host in plan.hosts {
+                var h = host
+                h.credentialReference = nil
+                h.lastLaunchRequestedAt = nil
+                h.createdAt = stamp
+                h.updatedAt = stamp
+                try h.validate()
+                if try fetchExists(h.id) { throw HostRepositoryError.duplicateID(h.id) }
+                try checkJump(h)
+                try write(h, insert: true)
+            }
+            for forward in plan.forwards {
+                var f = try forward.validated()
+                f.createdAt = stamp
+                try PortForwardRepository.checkHost(db, f.hostID)
+                try PortForwardRepository.checkPortFree(db, f.localPort, excluding: nil)
+                try PortForwardRepository.insertRow(db, f)
+            }
+        }
+    }
+
     public func delete(id: UUID) throws {
         try db.transaction {
             guard try fetchExists(id) else { throw HostRepositoryError.notFound(id) }

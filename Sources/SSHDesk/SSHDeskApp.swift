@@ -77,6 +77,11 @@ struct SSHDeskApp: App {
                 Button("Import từ SSH config…") { model.showImport = true }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
                     .disabled(!model.isReady)
+                Divider()
+                Button("Xuất danh sách máy chủ…") { model.exportHosts(.all) }
+                    .disabled(!model.isReady || model.hosts.isEmpty)
+                Button("Nhập danh sách máy chủ…") { model.beginImportFile() }
+                    .disabled(!model.isReady)
             }
         }
     }

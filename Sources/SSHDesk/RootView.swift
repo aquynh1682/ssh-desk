@@ -62,6 +62,20 @@ struct MainView: View {
             }
             ToolbarItem(placement: .principal) { searchField }
             ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("Xuất tất cả máy chủ…") { model.exportHosts(.all) }
+                        .disabled(model.hosts.isEmpty)
+                    if case .folder(let name) = model.sidebar {
+                        Button("Xuất thư mục “\(name)”…") { model.exportHosts(.folder(name)) }
+                    }
+                    Divider()
+                    Button("Nhập từ file…") { model.beginImportFile() }
+                } label: {
+                    Label("Xuất / nhập danh sách", systemImage: "arrow.up.arrow.down.square")
+                }
+                .help("Xuất / nhập danh sách máy chủ (file JSON, không chứa mật khẩu)")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     model.showImport = true
                 } label: {
@@ -75,6 +89,12 @@ struct MainView: View {
             HostFormView(model: model, target: target)
         }
         .sheet(isPresented: $model.showImport) { ImportView(model: model) }
+        .sheet(item: $model.exchangePreview) { preview in
+            HostImportPreviewSheet(model: model, preview: preview)
+        }
+        .sheet(item: $model.forwardForm) { target in
+            PortForwardFormView(model: model, target: target)
+        }
         .modifier(KeysDialogs(model: model, keys: model.keys))
         .sheet(item: $model.transferSheet) { target in
             switch target {
@@ -151,6 +171,13 @@ struct MainView: View {
         HStack {
             Label("Dữ liệu lưu trên máy này", systemImage: "internaldrive")
             Spacer()
+            if model.tunnels.activeCount > 0 {
+                HStack(spacing: 6) {
+                    Circle().fill(Theme.green).frame(width: 8, height: 8)
+                    Text("\(model.tunnels.activeCount) tunnel đang chạy")
+                }
+                .padding(.trailing, 12)
+            }
             if model.sidebar == .transfers {
                 let sessions = model.browser?.sessionCount ?? 0
                 HStack(spacing: 6) {

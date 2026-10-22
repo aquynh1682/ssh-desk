@@ -108,6 +108,11 @@ final class AppModel {
     /// Mọi job đã biết (đang chạy + lịch sử). Cập nhật từ `TransferManager.events` trên MainActor.
     var jobs: [TransferJob] = []
     var prompts = AuthPromptQueue()
+    /// Mọi local port forward đã lưu (ADR-011).
+    private(set) var forwards: [PortForward] = []
+    var forwardForm: ForwardFormTarget?
+    /// File xuất/nhập đã đọc, đang xem trước (ADR-020).
+    var exchangePreview: ExchangePreview?
 
     let paths: AppPaths
     private(set) var service: ConnectionService?
@@ -127,6 +132,9 @@ final class AppModel {
     /// Màn "Monitor" tài nguyên server (ADR-019).
     @ObservationIgnored lazy var monitor = MonitorModel(app: self)
     private(set) var analystRepository: AnalystRunRepository?
+    private(set) var forwardRepository: PortForwardRepository?
+    /// Các tunnel `ssh -N -L` (ADR-011).
+    @ObservationIgnored lazy var tunnels = TunnelsModel(app: self)
     private var transferRepository: TransferRepository?
     private var eventsTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -156,9 +164,12 @@ final class AppModel {
                 askpassHelper: AskpassHelper.defaultURL())
             self.service = service
             analystRepository = AnalystRunRepository(database: db)
+            let forwardRepo = PortForwardRepository(database: db)
+            forwardRepository = forwardRepo
             try await service.regenerateSSHConfig()
             hosts = try await repo.all()
             folders = try await repo.folders()
+            forwards = try await forwardRepo.all()
             try await startTransfers(database: db, hosts: repo)
             browser = FileBrowserModel(app: self, credentials: credentials)
             phase = .ready
@@ -307,6 +318,7 @@ final class AppModel {
         do {
             hosts = try await service.repository.all()
             folders = try await service.repository.folders()
+            forwards = try await forwardRepository?.all() ?? []
             if case .folder(let f) = sidebar, !folders.contains(f) { sidebar = .all }
             browser?.hostsChanged(hosts)
             analyst.foldersChanged()
@@ -379,6 +391,7 @@ final class AppModel {
         guard let host = pendingDelete, let service else { return }
         pendingDelete = nil
         do {
+            await tunnels.stopTunnels(hostID: host.id)
             try await service.delete(id: host.id)
             if selection == host.id { selection = nil }
             await reload()
@@ -626,10 +639,13 @@ final class AppModel {
         } catch { show(error, title: "Không xoá được lịch sử") }
     }
 
-    var hasOpenSessions: Bool { (browser?.hasOpenSessions ?? false) || analyst.isRunning }
+    var hasOpenSessions: Bool {
+        (browser?.hasOpenSessions ?? false) || analyst.isRunning || tunnels.activeCount > 0
+    }
 
     /// Dùng khi thoát: đóng mọi master của tab duyệt file (`ssh -O exit`), sau khi job đã xử lý xong.
     func closeAllSessions() async {
+        await tunnels.shutdown()
         await analyst.shutdown()
         await monitor.shutdown()
         await browser?.closeAll()
@@ -673,6 +689,8 @@ final class AppModel {
             return "Tên thư mục tối đa \(HostFolders.maxNameLength) ký tự."
         case FolderNameError.controlCharacters: return "Tên thư mục chứa ký tự điều khiển."
         case HostRepositoryError.folderNameExists: return "Đã có thư mục trùng tên."
+        case let e as PortForwardError: return Self.message(for: e)
+        case let e as HostExchangeError: return e.description
         case HostRepositoryError.referencedAsJumpHost:
             return "Máy này đang là bastion của máy khác."
         case ConnectionServiceError.missingAlias: return "Hồ sơ thiếu alias SSH."
@@ -705,5 +723,49 @@ final class AppModel {
         case let e as WarpLauncherError: return "Lỗi file cấu hình Warp: \(e)"
         default: return error.localizedDescription
         }
+    }
+
+    static func message(for e: PortForwardError) -> String {
+        switch e {
+        case .invalidLocalPort(let p):
+            return "Cổng local \(p) không hợp lệ: phải từ \(PortForward.minLocalPort) đến 65535."
+        case .invalidRemotePort(let p): return "Cổng đích \(p) không hợp lệ: phải từ 1 đến 65535."
+        case .invalidRemoteHost:
+            return
+                "Máy đích không hợp lệ: dùng tên máy/IPv4 (chữ, số, '.', '-', '_') hoặc IPv6 trong [ ]; không có khoảng trắng hay dấu ':'."
+        case .invalidName: return "Tên forward chứa ký tự điều khiển hoặc dài quá \(PortForward.maxNameLength) ký tự."
+        case .localPortTaken(let port, _): return "Cổng local \(port) đã được một forward khác của app dùng."
+        case .hostNotFound: return "Không tìm thấy máy chủ (có thể đã bị xoá)."
+        case .hostNotSupported: return "Máy Windows không có port forward."
+        case .notFound: return "Không tìm thấy forward (có thể đã bị xoá)."
+        }
+    }
+
+    // MARK: - Port forward
+
+    /// Trả true nếu lưu được (form đóng).
+    func saveForward(_ forward: PortForward, isNew: Bool) async -> Bool {
+        guard let repo = forwardRepository else { return false }
+        do {
+            if isNew { try await repo.add(forward) } else { try await repo.update(forward) }
+            forwards = try await repo.all()
+            return true
+        } catch {
+            show(error, title: "Không lưu được port forward")
+            return false
+        }
+    }
+
+    func deleteForward(_ forward: PortForward) async {
+        guard let repo = forwardRepository else { return }
+        do {
+            await tunnels.manager.stop(forwardID: forward.id)
+            try await repo.delete(id: forward.id)
+            forwards = try await repo.all()
+        } catch { show(error, title: "Không xoá được port forward") }
+    }
+
+    func forwards(for hostID: UUID) -> [PortForward] {
+        forwards.filter { $0.hostID == hostID }.sorted { $0.localPort < $1.localPort }
     }
 }

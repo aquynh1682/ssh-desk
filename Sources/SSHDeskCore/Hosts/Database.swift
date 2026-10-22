@@ -151,6 +151,23 @@ public final class Database: @unchecked Sendable {
             "ALTER TABLE hosts ADD COLUMN rdp_redirect_clipboard INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE hosts ADD COLUMN rdp_admin_session INTEGER NOT NULL DEFAULT 0",
         ]),
+        // v6: local port forward đã lưu (ADR-011/E3). Xoá host thì xoá luôn forward của nó.
+        // local_port UNIQUE: không hai forward của app dùng chung một cổng local.
+        Migration(statements: [
+            """
+            CREATE TABLE port_forwards (
+                id TEXT PRIMARY KEY NOT NULL,
+                host_id TEXT NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                local_port INTEGER NOT NULL,
+                remote_host TEXT NOT NULL,
+                remote_port INTEGER NOT NULL,
+                created_at REAL NOT NULL
+            )
+            """,
+            "CREATE UNIQUE INDEX idx_port_forwards_local ON port_forwards(local_port)",
+            "CREATE INDEX idx_port_forwards_host ON port_forwards(host_id)",
+        ]),
     ]
 
     private static let sqliteMagic = Data("SQLite format 3\0".utf8)

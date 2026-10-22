@@ -49,6 +49,7 @@ struct HostDetailView: View {
                         .help("Tải file/thư mục từ server về máy này")
                     }
                 }
+                if !isWindows { PortForwardSection(model: model, host: host) }
                 infoCard
             }
             .padding(18)

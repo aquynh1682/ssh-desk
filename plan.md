@@ -38,7 +38,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [~] E0 Double-click host = Mở Warp (code xong, chờ thử tay)
 - [~] E1 Màn SSH Keys + nút "Cài key lên server" (ssh-copy-id qua PTY) — ADR-010, ADR-014 (code xong, PM duyệt; chờ thử tay)
 - [~] E2 Lưu password Keychain + helper SSH_ASKPASS cho Warp — ADR-010 (code xong, PM duyệt; chờ thử với server có password)
-- [ ] E3 Local port forward: lưu danh sách, mở/dừng tunnel — ADR-011
+- [~] E3 (code xong, PM duyệt; chờ thử tay) Local port forward: lưu danh sách, mở/dừng tunnel — ADR-011
 
 ## Bước F — Duyệt file kiểu Xftp (ADR-013, người dùng yêu cầu)
 - [x] R1 (researcher) spike ControlMaster + sftp liệt kê/mkdir/rename/rm + scp dùng chung socket
@@ -63,7 +63,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [~] H2 (code xong, PM duyệt; chờ thử tay) Mật khẩu Windows: lưu Keychain, copy tự động khi mở (ADR-018)
 
 ## Bước D — Hoàn thiện
-- [ ] D1 Xuất/nhập danh sách máy chủ — ADR-020
+- [~] D1 (code xong, PM duyệt; chờ thử tay) Xuất/nhập danh sách máy chủ — ADR-020
 - [ ] D2 (ADR-022) Vòng đời app (thoát khi đang truyền), empty states, shortcut
 - [ ] D4 Màn Cài đặt (spec mục Settings + đề xuất PM: Keychain/clipboard, Analyst, Monitor, Windows App, dữ liệu) — ADR-021
 - [ ] D3 README.md, ARCHITECTURE.md, TESTING.md, KNOWN_LIMITATIONS.md; build `.app`

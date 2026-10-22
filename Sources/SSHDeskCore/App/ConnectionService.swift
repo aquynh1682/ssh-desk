@@ -274,6 +274,14 @@ public actor ConnectionService {
         return try rdpLauncher.prepare(host)
     }
 
+    // MARK: - Nhập từ file (ADR-020)
+
+    /// Ghi kế hoạch nhập (một transaction) rồi sinh lại SSH config của app.
+    public func applyImport(_ plan: HostExchange.Plan) async throws {
+        try await repository.applyImport(plan)
+        try await regenerateSSHConfig()
+    }
+
     // MARK: - Import
 
     public func importAliases(_ candidates: [ImportCandidate], sourcePath: String) async throws

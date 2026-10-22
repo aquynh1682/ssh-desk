@@ -30,6 +30,9 @@ extension AppModel {
         if let mp = monitor.activePrompt {
             return mp
         }
+        if let tp = tunnels.activePrompt {
+            return tp
+        }
         let tabPrompts = (browser?.tabs ?? []).filter { $0.pendingPrompt != nil }
         let total = prompts.items.count + tabPrompts.count
         if let p = prompts.current {
