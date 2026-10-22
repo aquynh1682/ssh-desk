@@ -2,6 +2,12 @@
 
 Ghi mới nhất ở trên. Mỗi phiên: làm gì, còn dở gì, bước tiếp theo.
 
+## 2026-10-23 — Bước K: hướng mở rộng chiến lược (PM agent)
+- ADR mới: 023 (ký app), 024 (IdentityAgent), 025 (CLI/URL), 026 (nguồn đồng bộ + Excel mẫu/XLSX/CSV, JSON, Ansible), 027 (Secure Enclave — researcher kiểm chứng ĐƯỢC với `-t none`), 028 (Prometheus/Zabbix), 029 (hỏi mật khẩu lần đầu), 030 (bộ đăng nhập có password/key/passphrase/agent), 004b (một kho secret qua CredentialStore; backend SE cho password CHƯA chốt, chờ nghiên cứu).
+- Xong (QA + PM duyệt, commit): K1 ký app, K2 IdentityAgent (v8), K3 CLI + URL scheme. Tài liệu K1–K3 đã cập nhật.
+- Đang làm: K4s bộ đăng nhập + cột hold (v9). Tiếp: K4a nguồn + Excel (v10) → K4c → K4b → K5 → K6 (v11).
+- Lưu ý: make check có lần đỏ không tái hiện (1/4 lần) — đã sửa một test Monitor dựa vào sleep; nếu còn, tìm test timing khác. `~/.ssh/known_hosts` đổi lúc 23:44 ngày 22 (thêm 172.16.50.120) — không phải do agent/test (test dùng known_hosts tạm), có lẽ người dùng tự ssh.
+
 ## 2026-10-22 (tiếp) — E3, D1–D4, harness
 - E3 port forward, D1 xuất/nhập, D4 Cài đặt, D2 vòng đời app, D3 tài liệu: code xong, PM duyệt; D4/D2 đã qua qa-reviewer. make check xanh 575 test.
 - Harness: thêm `qa-reviewer`, `doc-writer`, `pm`, `product-advisor` + skill `ssh-desk-delivery`.
