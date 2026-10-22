@@ -13,6 +13,8 @@ App macOS native (cá nhân) quản lý hồ sơ máy chủ, mở SSH trong Warp
 - **`coder` (Sonnet):** viết code + test theo task.
 - **`researcher` (Haiku):** đọc file, tra tài liệu, kiểm chứng hành vi công cụ bằng lệnh chỉ đọc.
 - **`qa-reviewer` (Sonnet):** kiểm tra phần coder vừa làm theo checklist bảo mật/ADR, chỉ đọc.
+- **`pm` (Opus):** điều phối triển khai theo skill `ssh-desk-delivery` (ADR → coder → QA → commit).
+- **`product-advisor` (Fable):** tư vấn sản phẩm, đề xuất ý tưởng và roadmap, không triển khai.
 - **`doc-writer` (Sonnet):** viết tài liệu `.md`, không đụng code, chạy song song với coder được.
 - Quyết định mới hoặc đổi quyết định → PM ghi vào `docs/architecture.md` trước, rồi mới giao code.
 - Task chỉ được tính xong khi PM đã review và `make check` xanh.
@@ -50,4 +52,4 @@ App macOS native (cá nhân) quản lý hồ sơ máy chủ, mở SSH trong Warp
 | Ngày | Thay đổi | Đối tượng | Lý do |
 | --- | --- | --- | --- |
 | 2026-10-22 | Thêm `qa-reviewer`, `doc-writer`, skill `ssh-desk-delivery` | agents, skills | Người dùng yêu cầu thêm agent để làm nốt việc còn lại |
-
+| 2026-10-22 | Thêm `pm` (Opus) và `product-advisor` (Fable) | agents, skill | Người dùng cần PM chuyên điều phối và chuyên gia tư vấn và ý tưởng |

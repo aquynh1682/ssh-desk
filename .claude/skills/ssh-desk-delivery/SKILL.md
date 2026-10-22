@@ -1,6 +1,6 @@
 ---
 name: ssh-desk-delivery
-description: Quy trình giao việc của đội SSH Desk (PM Opus → coder → qa-reviewer → PM duyệt/commit; doc-writer cho tài liệu; researcher tra cứu). Dùng khi làm tiếp tính năng/bước trong plan.md, sửa theo phản hồi người dùng, "làm nốt việc còn lại", chạy lại QA, cập nhật hoặc viết lại tài liệu (README, KNOWN_LIMITATIONS…). Không dùng cho câu hỏi đơn giản trả lời trực tiếp được.
+description: Quy trình giao việc của đội SSH Desk (ý tưởng: product-advisor → người dùng chọn → pm → coder → qa-reviewer → PM duyệt/commit; doc-writer cho tài liệu; researcher tra cứu). Dùng khi làm tiếp tính năng/bước trong plan.md, sửa theo phản hồi người dùng, "làm nốt việc còn lại", chạy lại QA, cập nhật hoặc viết lại tài liệu (README, KNOWN_LIMITATIONS…). Không dùng cho câu hỏi đơn giản trả lời trực tiếp được.
 ---
 
 # Giao việc SSH Desk
@@ -9,6 +9,14 @@ description: Quy trình giao việc của đội SSH Desk (PM Opus → coder →
 
 ## Vì sao có quy trình này
 Một thư mục làm việc, một `.build` dùng chung. Hai agent cùng build hoặc cùng sửa một file sẽ đè nhau. Worktree tạo từ `main`, không phải từ nhánh đang làm (xem CLAUDE.md), nên coder làm thẳng trên nhánh, **mỗi lúc chỉ một coder**. Quyết định nằm trong `docs/architecture.md`, nên agent đọc ADR thay vì đoán.
+
+## Ý tưởng và tư vấn: `product-advisor`
+- Khi người dùng xin ý tưởng, roadmap hoặc hỏi "nên thêm gì": giao `product-advisor`. Nếu cần lưu lại thì nhờ ghi `docs/ideas.md`.
+- Agent chính trình bày lại cho người dùng và hỏi họ chọn. Chỉ ý tưởng được người dùng chọn mới chuyển sang PM.
+
+## Điều phối: `pm`
+- Việc triển khai có thể giao trọn cho agent `pm`; nó làm các bước 0–4 bên dưới.
+- Nếu subagent không gọi được `Agent` (không lồng được), `pm` trả về kế hoạch giao việc và agent chính chạy theo kế hoạch đó.
 
 ## 0. Trước khi giao
 1. Đọc `progress.md` và `plan.md` để biết bước nào `[ ]` (chưa làm) và bước nào `[~]` (code xong, chờ thử).
