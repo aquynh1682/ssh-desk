@@ -262,6 +262,7 @@ Thứ tự làm (cập nhật sau khi thêm ADR-029/030): ADR-023 → 024 → 02
   - Identifier cố định: app `local.sshdesk.app`, helper `local.sshdesk.ctty`, `local.sshdesk.askpass`, CLI `local.sshdesk.cli`.
 - **App không tạo chứng chỉ, không sửa Keychain.** Người dùng tự tạo chứng chỉ "Code Signing" tự ký (Keychain Access → Certificate Assistant → Create a Certificate…, loại Code Signing). doc-writer ghi các bước vào README/TESTING.
 - **Rủi ro chấp nhận:** item Keychain tạo khi app còn ký ad-hoc vẫn mang ACL cũ → lần đầu sau khi đổi sang chứng chỉ có thể hỏi quyền một lần (chọn "Luôn cho phép" hoặc lưu lại password). Chứng chỉ tự ký không được Gatekeeper công nhận; app build tại máy không bị quarantine nên không ảnh hưởng. Mất/xoá chứng chỉ → quay về ad-hoc.
+- **Đã làm (K1, QA chặn → sửa → PM duyệt):** Makefile export `SSHDESK_SIGN_IDENTITY` qua môi trường (không nội suy vào dòng lệnh shell; tên chứa `$` thì đặt bằng biến môi trường); script từ chối ký tự điều khiển C0/C1; `security` lỗi → cảnh báo riêng rồi ad-hoc; trùng tên → cảnh báo, chấp nhận SHA-1 40 hex; codesign lỗi với identity → hướng dẫn + exit lỗi (không lặng lẽ hạ ad-hoc). Đổi identifier helper sang `local.sshdesk.*` → item Keychain cũ có thể hỏi quyền thêm một lần.
 - **Kiểm chứng (người dùng thử):** build hai lần với cùng identity, so `codesign -d -r-` giống nhau; askpass đọc Keychain sau `make install` lần hai không hỏi lại.
 
 ## ADR-024: Agent ngoài qua `IdentityAgent` (H-2a) — Đã chốt

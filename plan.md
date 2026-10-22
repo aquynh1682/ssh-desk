@@ -69,7 +69,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [x] D3 (README, docs/OVERVIEW.md, TESTING, KNOWN_LIMITATIONS) README.md, ARCHITECTURE.md, TESTING.md, KNOWN_LIMITATIONS.md; build `.app`
 
 ## Bước K — Hướng mở rộng chiến lược (người dùng chọn 2026-10-22, ADR-023..028)
-- [ ] K1 (coder) Ký app bằng chứng chỉ ổn định qua `SIGN_IDENTITY`/`SSHDESK_SIGN_IDENTITY`, fallback ad-hoc + cảnh báo — ADR-023
+- [~] K1 (code xong, QA đạt sau sửa, PM duyệt; chờ người dùng tạo chứng chỉ và thử 2 lần make install) Ký app bằng chứng chỉ ổn định qua `SIGN_IDENTITY`/`SSHDESK_SIGN_IDENTITY`, fallback ad-hoc + cảnh báo — ADR-023
 - [ ] K2 (coder) IdentityAgent theo host + mặc định Cài đặt, validate chống chèn directive, migration v8 — ADR-024
 - [ ] K3 (coder) CLI `sshdesk` (list/open/help) + URL scheme `sshdesk://` có xác nhận — ADR-025
 - [ ] K4s (coder) Bộ đăng nhập dùng chung (credential set), migration v9 — ADR-030

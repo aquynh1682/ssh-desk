@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Đóng gói SSH Desk thành app bundle và ký ad-hoc.
+# Đóng gói SSH Desk thành app bundle và ký (chứng chỉ ổn định nếu có SSHDESK_SIGN_IDENTITY, không thì ad-hoc).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -83,7 +83,69 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-codesign --force --sign - "$APP/Contents/MacOS/sshdesk-ctty"
-codesign --force --sign - "$APP/Contents/MacOS/sshdesk-askpass"
-codesign --force --sign - "$APP"
+# Ký (ADR-023). SSHDESK_SIGN_IDENTITY = tên chứng chỉ Code Signing do người dùng tự tạo.
+# Có chứng chỉ ổn định thì designated requirement không đổi giữa các lần build (ACL Keychain không hỏi lại).
+# Không có/không tìm thấy -> ký ad-hoc kèm cảnh báo. Không --deep, không hardened runtime.
+SIGN_ID="${SSHDESK_SIGN_IDENTITY:-}"
+if [ -n "$SIGN_ID" ]; then
+    # Cấm ký tự điều khiển C0/DEL (tr) và C1 U+0080–U+009F (UTF-8 C2 80..9F).
+    if [ "$(printf '%s' "$SIGN_ID" | LC_ALL=C tr -cd '[:cntrl:]' | wc -c)" -ne 0 ] ||
+        printf '%s' "$SIGN_ID" | LC_ALL=C grep -q $'\xc2[\x80-\x9f]'; then
+        echo "LỖI: SSHDESK_SIGN_IDENTITY chứa ký tự điều khiển/xuống dòng." >&2
+        exit 1
+    fi
+    # Chỉ đọc. Không dùng -v: chứng chỉ tự ký hiện kèm CSSMERR_TP_NOT_TRUSTED nhưng codesign vẫn ký được.
+    # Giá trị có thể là tên chính xác hoặc SHA-1 (40 hex, khớp cột hash) khi có nhiều chứng chỉ trùng tên.
+    MATCHES=0
+    LIST_OK=1
+    IDENTITIES="$(security find-identity -p codesigning 2>/dev/null)" || LIST_OK=0
+    if [ "$LIST_OK" -eq 1 ]; then
+        IS_SHA=0
+        case "$SIGN_ID" in
+        *[!0-9A-Fa-f]*) ;;
+        *) [ "${#SIGN_ID}" -eq 40 ] && IS_SHA=1 ;;
+        esac
+        SIGN_ID_UP="$(printf '%s' "$SIGN_ID" | LC_ALL=C tr 'a-f' 'A-F')"
+        while IFS= read -r line; do
+            name="${line#*\"}"
+            [ "$name" = "$line" ] && continue
+            name="${name%\"*}"
+            read -r _idx hash _rest <<<"$line"
+            if [ "$name" = "$SIGN_ID" ] || { [ "$IS_SHA" -eq 1 ] && [ "$hash" = "$SIGN_ID_UP" ]; }; then
+                MATCHES=$((MATCHES + 1))
+            fi
+        done <<<"$IDENTITIES"
+    fi
+    if [ "$LIST_OK" -ne 1 ]; then
+        echo "CẢNH BÁO: không đọc được danh sách chứng chỉ (Keychain khoá?) — ký ad-hoc; Keychain có thể hỏi quyền lại sau mỗi lần build." >&2
+        SIGN_ID=""
+    elif [ "$MATCHES" -gt 1 ]; then
+        echo "CẢNH BÁO: có $MATCHES chứng chỉ trùng tên \"$SIGN_ID\" — đặt SSHDESK_SIGN_IDENTITY bằng SHA-1 (security find-identity -p codesigning) — ký ad-hoc." >&2
+        SIGN_ID=""
+    elif [ "$MATCHES" -eq 0 ]; then
+        echo "CẢNH BÁO: không tìm thấy chứng chỉ ký \"$SIGN_ID\" (security find-identity -p codesigning) — ký ad-hoc; Keychain có thể hỏi quyền lại sau mỗi lần build." >&2
+        SIGN_ID=""
+    fi
+else
+    echo "CẢNH BÁO: chưa đặt SSHDESK_SIGN_IDENTITY — ký ad-hoc; cdhash đổi mỗi lần build nên Keychain có thể hỏi quyền lại." >&2
+fi
+
+sign() { # <đường dẫn> <identifier cố định>
+    if [ -n "$SIGN_ID" ]; then
+        codesign --force --sign "$SIGN_ID" --identifier "$2" "$1" || {
+            echo "LỖI: codesign thất bại với chứng chỉ đã chọn. Kiểm tra quyền truy cập khoá riêng (Keychain Access → chứng chỉ → Always Allow) và trạng thái tin cậy (Always Trust cho Code Signing)." >&2
+            exit 1
+        }
+    else
+        codesign --force --sign - --identifier "$2" "$1"
+    fi
+}
+# Helper trước, app sau.
+sign "$APP/Contents/MacOS/sshdesk-ctty" local.sshdesk.ctty
+sign "$APP/Contents/MacOS/sshdesk-askpass" local.sshdesk.askpass
+sign "$APP" local.sshdesk.app
+if [ -n "$SIGN_ID" ]; then
+    echo "Designated requirement:"
+    codesign -d -r- "$APP"
+fi
 echo "Đã tạo $APP"

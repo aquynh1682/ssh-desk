@@ -23,7 +23,15 @@ check: lint build test
 run:
 	swift run SSHDesk
 
-# Đóng gói bản release thành build/SSH Desk.app (ký ad-hoc).
+# Đóng gói bản release thành build/SSH Desk.app.
+# Ký bằng chứng chỉ Code Signing tự tạo: make app SIGN_IDENTITY="SSH Desk Local" (hoặc export SSHDESK_SIGN_IDENTITY).
+# Không có thì ký ad-hoc và cảnh báo (ADR-023).
+# Giá trị đi qua môi trường (export ở cấp Makefile), không nội suy vào dòng lệnh shell.
+# Giới hạn: make vẫn mở rộng `$` trong giá trị; tên chứa `$` hãy đặt bằng biến môi trường thay vì SIGN_IDENTITY=.
+SIGN_IDENTITY ?=
+ifneq ($(SIGN_IDENTITY),)
+export SSHDESK_SIGN_IDENTITY := $(SIGN_IDENTITY)
+endif
 app:
 	./scripts/build-app.sh
 
