@@ -195,7 +195,7 @@ private func perms(_ url: URL) -> Int {
         $0.rdpMultiMonitor = true
     }
     let rows = HostPresentation.connectionRows(w, jumpHostName: nil)
-    #expect(rows.map(\.label) == ["Địa chỉ", "Port", "User", "Gateway", "Hiển thị"])
+    #expect(rows.map(\.label) == ["Địa chỉ", "Port", "User", "Gateway", "Xác thực", "Hiển thị"])
     #expect(rows.last?.value == "Toàn màn hình, nhiều màn hình")
 }
 

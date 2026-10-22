@@ -115,6 +115,8 @@ final class AppModel {
     private(set) var browser: FileBrowserModel?
     /// Keychain thật; ACL tin cậy cả helper `sshdesk-askpass` (nếu tìm thấy trong bundle).
     let credentials: any CredentialStore
+    /// Clipboard giữ mật khẩu Windows tạm thời (ADR-018); xoá khi thoát app.
+    let secretClipboard = SecretClipboard()
     /// Màn "SSH Keys": liệt kê, tạo, cài key (ADR-014).
     @ObservationIgnored lazy var keys = KeysModel(app: self)
     /// Sổ phiên SSH đang sống, dùng chung giữa màn Truyền file và Project Analyst (một master/host).
@@ -147,7 +149,8 @@ final class AppModel {
             let service = ConnectionService(
                 repository: repo, appConfigURL: paths.sshConfigURL,
                 userConfigPath: AppPaths.existingUserConfigPath(), launcher: WarpLauncher(),
-                credentials: credentials, askpassHelper: AskpassHelper.defaultURL())
+                credentials: credentials, secretClipboard: secretClipboard,
+                askpassHelper: AskpassHelper.defaultURL())
             self.service = service
             analystRepository = AnalystRunRepository(database: db)
             try await service.regenerateSSHConfig()
@@ -468,14 +471,31 @@ final class AppModel {
     func openInWindowsApp(_ host: HostProfile) async {
         guard let service else { return }
         banner = nil
-        switch await service.openInWindowsApp(host) {
+        let report = await service.openInWindowsAppReport(host)
+        switch report.result {
         case .requested:
-            showToast("Đã yêu cầu Windows App mở kết nối — nhập mật khẩu trong Windows App")
+            switch report.passwordCopy {
+            case .none: showToast("Đã yêu cầu Windows App mở kết nối — nhập mật khẩu trong Windows App")
+            case .copied: showToast(Self.passwordCopiedToast)
+            case .failed(let why): showToast("Đã mở Windows App nhưng không copy được mật khẩu: \(why)")
+            }
             await reload()
         case .appUnavailable:
             banner = Banner(text: "Chưa cài Windows App.", copyHostID: nil, showsAppStoreLink: true)
         case .failed(let reason):
             alert = AppAlert(title: "Không mở được Windows App", message: reason)
+        }
+    }
+
+    static let passwordCopiedToast = "Đã copy mật khẩu — dán (⌘V) vào Windows App. Tự xoá sau 30 giây."
+
+    /// Menu "Copy mật khẩu" của máy Windows có mật khẩu lưu.
+    func copyWindowsPassword(_ host: HostProfile) async {
+        guard let service else { return }
+        switch await service.copyStoredWindowsPassword(host) {
+        case .none: showToast("Máy này chưa lưu mật khẩu")
+        case .copied: showToast("Đã copy mật khẩu. Tự xoá sau 30 giây.")
+        case .failed(let why): showToast("Không copy được mật khẩu: \(why)")
         }
     }
 

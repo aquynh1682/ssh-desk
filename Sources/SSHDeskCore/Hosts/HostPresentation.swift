@@ -108,9 +108,9 @@ public enum HostPresentation {
     }
 
     /// Các dòng thẻ "Kết nối". Chỉ chứa dữ liệu không bí mật (tên file khoá, không phải nội dung).
-    public static func connectionRows(_ host: HostProfile, jumpHostName: String?)
-        -> [ConnectionRow]
-    {
+    public static func connectionRows(
+        _ host: HostProfile, jumpHostName: String?, hasSavedPassword: Bool = false
+    ) -> [ConnectionRow] {
         if host.kind == .windowsRDP {
             var rows = [
                 ConnectionRow(label: "Địa chỉ", value: host.hostName, copyable: true),
@@ -125,6 +125,11 @@ public enum HostPresentation {
             if let g = host.rdpGateway, !g.isEmpty {
                 rows.append(ConnectionRow(label: "Gateway", value: g, copyable: true))
             }
+            rows.append(
+                ConnectionRow(
+                    label: "Xác thực",
+                    value: hasSavedPassword ? "Mật khẩu đã lưu" : "Nhập trong Windows App",
+                    copyable: false))
             rows.append(ConnectionRow(label: "Hiển thị", value: screenText(host), copyable: false))
             return rows
         }

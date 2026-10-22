@@ -68,8 +68,6 @@ struct HostFormView: View {
                         field("User", .rdpUser) {
                             TextField("User", text: $draft.rdpUsername, prompt: Text("DOMAIN\\user"))
                         }
-                        Text("Mật khẩu nhập và lưu trong Windows App. SSH Desk không lưu mật khẩu Windows.")
-                            .font(.caption).foregroundStyle(.secondary)
                     } else if !isImported {
                         LabeledContent("Kiểu kết nối") {
                             Text("Tự cấu hình (app sinh khối Host)").foregroundStyle(.secondary)
@@ -82,7 +80,7 @@ struct HostFormView: View {
                         }
                         field("Port", .port) { TextField("Port", text: $draft.portText) }
                     }
-                    if !isWindows { authSection }
+                    authSection
                 }
                 Section {
                     DisclosureGroup("Nâng cao", isExpanded: $showAdvanced) {
@@ -156,7 +154,8 @@ struct HostFormView: View {
             Button("Huỷ", role: .cancel) { pendingKind = nil }
         } message: {
             Text(
-                "Một số thông tin riêng của loại hiện tại sẽ không còn dùng (mật khẩu đã lưu sẽ bị xoá khi bấm Lưu).")
+                "Một số thông tin riêng của loại hiện tại sẽ không còn dùng (mật khẩu đã lưu được giữ nếu bạn vẫn chọn \"Mật khẩu\", nếu không sẽ bị xoá khi bấm Lưu)."
+            )
         }
         .confirmationDialog("Xoá mật khẩu đã lưu?", isPresented: $confirmClear) {
             Button("Xoá", role: .destructive) { Task { await clearSavedPassword() } }
@@ -190,6 +189,9 @@ struct HostFormView: View {
     }
 
     private var authChoices: [(HostDraft.AuthChoice, String)] {
+        if isWindows {
+            return [(.password, "Mật khẩu (lưu trong Keychain)"), (.prompt, "Nhập trong Windows App")]
+        }
         let all: [(HostDraft.AuthChoice, String)] = [
             (.agent, "ssh-agent / mặc định"), (.keyFile, "File khoá riêng"),
             (.password, "Mật khẩu (lưu trong Keychain)"), (.prompt, "Nhập khi kết nối"),
@@ -230,7 +232,10 @@ struct HostFormView: View {
                 field("Mật khẩu", .password) {
                     SecureField(
                         "Mật khẩu", text: $passwordInput,
-                        prompt: Text(hasSavedPassword ? "Để trống = giữ mật khẩu hiện tại" : "Mật khẩu SSH"))
+                        prompt: Text(
+                            hasSavedPassword
+                                ? "Để trống = giữ mật khẩu hiện tại" : (isWindows ? "Mật khẩu Windows" : "Mật khẩu SSH")
+                        ))
                 }
             }
         }
@@ -238,6 +243,11 @@ struct HostFormView: View {
     }
 
     private var authNote: String {
+        if isWindows {
+            return draft.authChoice == .password
+                ? "Khi mở, mật khẩu được copy để bạn dán (⌘V) vào Windows App; clipboard tự xoá sau 30 giây."
+                : "Mật khẩu nhập trong Windows App; SSH Desk không lưu."
+        }
         switch draft.authChoice {
         case .agent: return "Dùng key trong ssh-agent hoặc cấu hình SSH mặc định."
         case .keyFile: return "Passphrase (nếu có) nhập khi kết nối."
@@ -380,12 +390,12 @@ struct HostFormView: View {
         var profile = draft.profile(basedOn: base)
         profile.project = model.canonicalFolder(profile.project)
         // Lấy giá trị ra rồi xoá khỏi state ngay: không giữ password trong view sau khi lưu.
-        let password = !isWindows && draft.authChoice == .password && !passwordInput.isEmpty ? passwordInput : nil
+        let password = draft.authChoice == .password && !passwordInput.isEmpty ? passwordInput : nil
         passwordInput = ""
         let removeStored =
             !isDuplicate && draft.removesStoredPassword(hasSavedPassword: hasSavedPassword)
         let copyFrom =
-            isDuplicate && !isWindows && hasSavedPassword && draft.authChoice == .password ? duplicateSource?.id : nil
+            isDuplicate && hasSavedPassword && draft.authChoice == .password ? duplicateSource?.id : nil
         if await model.save(profile, isNew: isNew, password: password, copyPasswordFrom: copyFrom) {
             if removeStored { _ = await model.clearPassword(hostID: profile.id) }
             dismiss()

@@ -63,6 +63,9 @@ public struct HostDraft: Equatable, Sendable {
         let p = portText.trimmingCharacters(in: .whitespaces)
         if newKind == .windowsRDP && p == "22" { portText = String(HostProfile.defaultRDPPort) }
         if newKind == .ssh && p == String(HostProfile.defaultRDPPort) { portText = "22" }
+        // Máy Windows chỉ có 2 lựa chọn xác thực: Mật khẩu / Nhập trong Windows App. Mật khẩu được giữ.
+        if newKind == .windowsRDP && authChoice != .password { authChoice = .prompt }
+        if newKind == .ssh && authChoice == .prompt && kind == .windowsRDP { authChoice = .agent }
         kind = newKind
     }
 
@@ -79,7 +82,10 @@ public struct HostDraft: Equatable, Sendable {
         hostName = host.hostName
         user = host.user
         portText = String(host.port)
-        authChoice = .from(host.authMethod, hasSavedPassword: hasSavedPassword)
+        authChoice =
+            host.kind == .windowsRDP
+            ? (hasSavedPassword ? .password : .prompt)
+            : .from(host.authMethod, hasSavedPassword: hasSavedPassword)
         identityFile = host.identityFile ?? ""
         jumpHostID = host.jumpHostID
         project = host.project
@@ -122,8 +128,9 @@ public struct HostDraft: Equatable, Sendable {
             h.rdpRedirectClipboard = rdpRedirectClipboard
             h.rdpAdminSession = rdpAdminSession
             // Trường SSH không dùng. credentialReference giữ nguyên để form xoá item Keychain khi lưu.
+            // Mật khẩu Windows: `.interactive` + credentialReference (ADR-018); ngược lại `.agent` như trước.
             h.user = ""
-            h.authMethod = .agent
+            h.authMethod = authChoice == .password ? .interactive : .agent
             h.identityFile = nil
             h.jumpHostID = nil
             h.remoteBookmarks = []
@@ -173,7 +180,7 @@ public struct HostDraft: Equatable, Sendable {
                 result[.identityFile] = "Hãy chọn file khoá riêng."
             }
         }
-        if kind == .ssh && authChoice == .password && !hasSavedPassword && !passwordEntered {
+        if authChoice == .password && !hasSavedPassword && !passwordEntered {
             result[.password] = "Nhập mật khẩu."
         }
         // Các quy tắc còn lại (ký tự cấm, newline...) lấy từ validate() của model.
@@ -186,9 +193,10 @@ public struct HostDraft: Equatable, Sendable {
         return result
     }
 
-    /// Có cần xoá mật khẩu đã lưu khi lưu không: đang có item Keychain mà người dùng chọn kiểu khác "Mật khẩu".
+    /// Có cần xoá mật khẩu đã lưu khi lưu không: đang có item Keychain mà người dùng chọn kiểu khác "Mật khẩu"
+    /// (áp dụng cho cả SSH và Windows; đổi loại máy mà vẫn chọn Mật khẩu thì giữ).
     public func removesStoredPassword(hasSavedPassword: Bool) -> Bool {
-        hasSavedPassword && (kind == .windowsRDP || authChoice != .password)
+        hasSavedPassword && authChoice != .password
     }
 
     public static func describe(_ e: HostValidationError) -> (Field, String) {

@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        AppModel.shared.secretClipboard.clearNowIfOwned()
+    }
+
     /// Còn job chạy thì đóng cửa sổ KHÔNG thoát app (job tiếp tục trong lúc app còn mở; mở lại
     /// bằng Dock). Hết job thì đóng cửa sổ cuối = thoát như trước.
     /// Thứ tự thoát: hỏi về job đang chạy (hộp thoại hiện có) → huỷ job → đóng mọi master của tab

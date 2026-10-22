@@ -25,8 +25,12 @@ struct HostDetailView: View {
                         : "Mở phiên SSH trong Warp (Return khi đang ở danh sách)")
                 connectionCard
                 if isWindows {
-                    Text("Mật khẩu nhập và lưu trong Windows App. SSH Desk không lưu mật khẩu Windows.")
-                        .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                    Text(
+                        model.hasStoredPassword(host)
+                            ? "Khi mở, mật khẩu được copy để bạn dán (⌘V) vào Windows App; clipboard tự xoá sau 30 giây."
+                            : "Mật khẩu nhập trong Windows App."
+                    )
+                    .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
                 } else {
                     HStack(spacing: 10) {
                         Button {
@@ -76,6 +80,9 @@ struct HostDetailView: View {
             Menu {
                 if isWindows {
                     Button("Mở Windows App") { Task { await model.openInWindowsApp(host) } }
+                    if model.hasStoredPassword(host) {
+                        Button("Copy mật khẩu") { Task { await model.copyWindowsPassword(host) } }
+                    }
                     Button("Hiện file .rdp trong Finder") {
                         Task { await model.revealRDPFile(host) }
                     }
@@ -106,7 +113,8 @@ struct HostDetailView: View {
 
     private var connectionCard: some View {
         let rows = HostPresentation.connectionRows(
-            host, jumpHostName: model.name(of: host.jumpHostID))
+            host, jumpHostName: model.name(of: host.jumpHostID),
+            hasSavedPassword: isWindows && model.hasStoredPassword(host))
         return VStack(alignment: .leading, spacing: 0) {
             Text("Kết nối").font(.system(size: 14, weight: .semibold))
                 .padding(.horizontal, 14).padding(.vertical, 12)

@@ -285,6 +285,9 @@ struct HostListView: View {
     private func hostActions(_ host: HostProfile) -> some View {
         if host.kind == .windowsRDP {
             Button("Mở Windows App") { Task { await model.openInWindowsApp(host) } }
+            if model.hasStoredPassword(host) {
+                Button("Copy mật khẩu") { Task { await model.copyWindowsPassword(host) } }
+            }
             Button("Hiện file .rdp trong Finder") { Task { await model.revealRDPFile(host) } }
         } else {
             Button("Mở Warp") { Task { await model.openInWarp(host) } }

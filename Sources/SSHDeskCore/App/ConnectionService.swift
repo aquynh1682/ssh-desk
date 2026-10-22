@@ -18,6 +18,19 @@ public struct ImportOutcome: Sendable, Equatable {
     public var skippedAliases: [String]
 }
 
+/// Kết quả copy mật khẩu Windows lên clipboard (ADR-018). Không chứa mật khẩu.
+public enum PasswordCopyOutcome: Sendable, Equatable {
+    /// Không có mật khẩu lưu (hoặc không áp dụng): không làm gì.
+    case none
+    case copied
+    case failed(String)
+}
+
+public struct WindowsOpenReport: Sendable, Equatable {
+    public var result: RDPLaunchResult
+    public var passwordCopy: PasswordCopyOutcome
+}
+
 /// Nối HostRepository, SSH config của app và WarpLauncher. Không chạy ssh, không mở mạng.
 public actor ConnectionService {
     public let repository: HostRepository
@@ -26,6 +39,7 @@ public actor ConnectionService {
     private let launcher: WarpLauncher
     private let rdpLauncher: WindowsAppLauncher
     private let credentials: (any CredentialStore)?
+    private let secretClipboard: SecretClipboard?
     private let askpassHelper: URL?
     private let now: @Sendable () -> Date
 
@@ -34,10 +48,11 @@ public actor ConnectionService {
     public init(
         repository: HostRepository, appConfigURL: URL, userConfigPath: String?,
         launcher: WarpLauncher, rdpLauncher: WindowsAppLauncher = WindowsAppLauncher(),
-        credentials: (any CredentialStore)? = nil,
+        credentials: (any CredentialStore)? = nil, secretClipboard: SecretClipboard? = nil,
         askpassHelper: URL? = nil, now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.credentials = credentials
+        self.secretClipboard = secretClipboard
         self.askpassHelper = askpassHelper
         self.repository = repository
         self.appConfigURL = appConfigURL
@@ -222,14 +237,35 @@ public actor ConnectionService {
 
     /// Sinh file .rdp rồi nhờ Windows App mở. Ghi `lastLaunchRequestedAt` khi `.requested`.
     public func openInWindowsApp(_ host: HostProfile) async -> RDPLaunchResult {
-        guard host.kind == .windowsRDP else { return .failed("Đây không phải máy Windows.") }
-        let result = await rdpLauncher.launch(host)
-        if result == .requested {
-            do { try await repository.markLaunchRequested(id: host.id, at: now()) } catch {
-                return .failed("\(error)")
-            }
+        await openInWindowsAppReport(host).result
+    }
+
+    /// Như `openInWindowsApp`; khi `.requested` và host có mật khẩu lưu thì copy mật khẩu lên clipboard
+    /// (đọc Keychain tại đây, không đi qua view). Chỉ máy Windows, đúng một lần mỗi lần mở.
+    public func openInWindowsAppReport(_ host: HostProfile) async -> WindowsOpenReport {
+        guard host.kind == .windowsRDP else {
+            return WindowsOpenReport(result: .failed("Đây không phải máy Windows."), passwordCopy: .none)
         }
-        return result
+        let result = await rdpLauncher.launch(host)
+        guard result == .requested else { return WindowsOpenReport(result: result, passwordCopy: .none) }
+        do { try await repository.markLaunchRequested(id: host.id, at: now()) } catch {
+            return WindowsOpenReport(result: .failed("\(error)"), passwordCopy: .none)
+        }
+        return WindowsOpenReport(result: result, passwordCopy: await copyStoredWindowsPassword(host))
+    }
+
+    /// Copy mật khẩu đã lưu của máy Windows lên clipboard (tự xoá sau 30 giây). Host SSH: `.failed`.
+    public func copyStoredWindowsPassword(_ host: HostProfile) async -> PasswordCopyOutcome {
+        guard host.kind == .windowsRDP else { return .failed("Đây không phải máy Windows.") }
+        guard let credentials, let secretClipboard else { return .none }
+        let ref = (try? await repository.host(id: host.id))?.credentialReference ?? host.credentialReference
+        guard let ref else { return .none }
+        guard let password = credentials.read(ref: ref) else {
+            return credentials.exists(ref: ref)
+                ? .failed("Không đọc được mật khẩu từ Keychain.") : .none
+        }
+        secretClipboard.copy(password, clearAfter: 30)
+        return .copied
     }
 
     /// Ghi file .rdp (không mở app) để hiện trong Finder.
