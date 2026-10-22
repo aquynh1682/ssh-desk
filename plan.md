@@ -49,6 +49,10 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [x] G1 Core: whitelist lệnh, chạy lệnh qua master, parser `ss`/`ip addr`, dựng topology, probe, xuất báo cáo (thuần, chưa DB)
 - [~] G2 (code xong, PM duyệt; chờ thử với server Linux test) DB lịch sử chạy + UI (sidebar PROJECTS, tab Servers/Bản đồ/Kết quả/Lịch sử, graph, panel chi tiết) — sau khi xong thư mục server
 
+## Bước H — Máy Windows (ADR-017, người dùng yêu cầu)
+- [ ] H0 (người dùng) thử file .rdp thật với Windows App: host + user có điền sẵn không
+- [ ] H1 Loại máy Windows (RDP): model + migration, form, sinh .rdp, Mở Windows App, ẩn chức năng SSH
+
 ## Bước D — Hoàn thiện
 - [ ] D1 Keychain CredentialStore, import/export metadata
 - [ ] D2 Vòng đời app (thoát khi đang truyền), empty states, shortcut
