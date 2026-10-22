@@ -18,12 +18,15 @@ struct HostFormView: View {
     @Local private var passwordInput = ""
     @Local private var hasSavedPassword = false
     @Local private var creatingFolder = false
+    /// Loại máy đang chờ xác nhận khi sửa host có sẵn.
+    @Local private var pendingKind: HostKind?
     /// Host gốc khi đang nhân bản (nil = thêm/sửa thường).
     @Local private var duplicateSource: HostProfile?
     @FocusState private var nameFocused: Bool
 
     private var isDuplicate: Bool { duplicateSource != nil }
     private var isNew: Bool { base == nil || isDuplicate }
+    private var isWindows: Bool { draft.kind == .windowsRDP }
     private var isImported: Bool { base?.connectionMode == .existingSSHConfigAlias }
     private var errors: [HostDraft.Field: String] {
         draft.errors(
@@ -49,11 +52,25 @@ struct HostFormView: View {
                     }
                 }
                 Section("Thông tin chính") {
+                    if !isImported { kindPicker }
                     field("Tên", .displayName) {
-                        TextField("Tên", text: $draft.displayName, prompt: Text("Web production"))
-                            .focused($nameFocused)
+                        TextField(
+                            "Tên", text: $draft.displayName,
+                            prompt: Text(isWindows ? "Windows server" : "Web production")
+                        )
+                        .focused($nameFocused)
                     }
-                    if !isImported {
+                    if isWindows {
+                        field("Host", .hostName) {
+                            TextField("Host", text: $draft.hostName, prompt: Text("192.168.1.10"))
+                        }
+                        field("Port", .port) { TextField("Port", text: $draft.portText) }
+                        field("User", .rdpUser) {
+                            TextField("User", text: $draft.rdpUsername, prompt: Text("DOMAIN\\user"))
+                        }
+                        Text("Mật khẩu nhập và lưu trong Windows App. SSH Desk không lưu mật khẩu Windows.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else if !isImported {
                         LabeledContent("Kiểu kết nối") {
                             Text("Tự cấu hình (app sinh khối Host)").foregroundStyle(.secondary)
                         }
@@ -65,15 +82,32 @@ struct HostFormView: View {
                         }
                         field("Port", .port) { TextField("Port", text: $draft.portText) }
                     }
-                    authSection
+                    if !isWindows { authSection }
                 }
                 Section {
                     DisclosureGroup("Nâng cao", isExpanded: $showAdvanced) {
-                        if !isImported {
+                        if isWindows {
+                            field("Domain", .rdpDomain) {
+                                TextField("Domain", text: $draft.rdpDomain)
+                            }
+                            field("RD Gateway", .rdpGateway) {
+                                TextField(
+                                    "RD Gateway", text: $draft.rdpGateway,
+                                    prompt: Text("gateway.example.com[:cổng]"))
+                            }
+                            Picker("Hiển thị", selection: $draft.rdpScreenMode) {
+                                Text("Toàn màn hình").tag(RDPScreenMode.fullScreen)
+                                Text("Cửa sổ").tag(RDPScreenMode.window)
+                            }
+                            Toggle("Nhiều màn hình", isOn: $draft.rdpMultiMonitor)
+                            Toggle("Chia sẻ clipboard", isOn: $draft.rdpRedirectClipboard)
+                            Toggle("Phiên quản trị", isOn: $draft.rdpAdminSession)
+                        }
+                        if !isImported && !isWindows {
                             field("Bastion", .jumpHost) {
                                 Picker("Bastion", selection: $draft.jumpHostID) {
                                     Text("Không dùng").tag(UUID?.none)
-                                    ForEach(model.hosts.filter { $0.id != base?.id }) { h in
+                                    ForEach(HostPresentation.sshHosts(model.hosts).filter { $0.id != base?.id }) { h in
                                         Text(h.displayName).tag(UUID?.some(h.id))
                                     }
                                 }
@@ -85,7 +119,7 @@ struct HostFormView: View {
                         }
                         TextField("Tags (cách nhau bằng dấu phẩy)", text: $draft.tagsText)
                         TextField("Ghi chú", text: $draft.notes, axis: .vertical).lineLimit(2...5)
-                        bookmarks
+                        if !isWindows { bookmarks }
                     }
                 }
                 if let g = errors[.general] ?? errors[.alias] {
@@ -111,6 +145,19 @@ struct HostFormView: View {
         }
         .frame(width: 520, height: 560)
         .onAppear(perform: load)
+        .confirmationDialog(
+            "Đổi loại máy?",
+            isPresented: Binding(get: { pendingKind != nil }, set: { if !$0 { pendingKind = nil } })
+        ) {
+            Button("Đổi loại") {
+                if let k = pendingKind { draft.setKind(k) }
+                pendingKind = nil
+            }
+            Button("Huỷ", role: .cancel) { pendingKind = nil }
+        } message: {
+            Text(
+                "Một số thông tin riêng của loại hiện tại sẽ không còn dùng (mật khẩu đã lưu sẽ bị xoá khi bấm Lưu).")
+        }
         .confirmationDialog("Xoá mật khẩu đã lưu?", isPresented: $confirmClear) {
             Button("Xoá", role: .destructive) { Task { await clearSavedPassword() } }
         } message: {
@@ -121,6 +168,25 @@ struct HostFormView: View {
         } message: {
             Text("Bạn đã chuyển khỏi \"Mật khẩu\"; mật khẩu trong Keychain sẽ bị xoá.")
         }
+    }
+
+    private var kindPicker: some View {
+        Picker(
+            "Loại máy",
+            selection: Binding(
+                get: { draft.kind },
+                set: { newKind in
+                    if isNew {
+                        draft.setKind(newKind)
+                    } else if newKind != draft.kind {
+                        pendingKind = newKind
+                    }
+                })
+        ) {
+            Text("Linux / SSH").tag(HostKind.ssh)
+            Text("Windows (RDP)").tag(HostKind.windowsRDP)
+        }
+        .pickerStyle(.segmented)
     }
 
     private var authChoices: [(HostDraft.AuthChoice, String)] {
@@ -314,12 +380,12 @@ struct HostFormView: View {
         var profile = draft.profile(basedOn: base)
         profile.project = model.canonicalFolder(profile.project)
         // Lấy giá trị ra rồi xoá khỏi state ngay: không giữ password trong view sau khi lưu.
-        let password = draft.authChoice == .password && !passwordInput.isEmpty ? passwordInput : nil
+        let password = !isWindows && draft.authChoice == .password && !passwordInput.isEmpty ? passwordInput : nil
         passwordInput = ""
         let removeStored =
             !isDuplicate && draft.removesStoredPassword(hasSavedPassword: hasSavedPassword)
         let copyFrom =
-            isDuplicate && hasSavedPassword && draft.authChoice == .password ? duplicateSource?.id : nil
+            isDuplicate && !isWindows && hasSavedPassword && draft.authChoice == .password ? duplicateSource?.id : nil
         if await model.save(profile, isNew: isNew, password: password, copyPasswordFrom: copyFrom) {
             if removeStored { _ = await model.clearPassword(hostID: profile.id) }
             dismiss()

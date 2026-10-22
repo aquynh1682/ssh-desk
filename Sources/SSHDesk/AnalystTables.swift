@@ -214,9 +214,10 @@ struct AnalystServersTab: View {
     var body: some View {
         let a = model.analyst
         let hosts = a.hosts
+        let windowsHosts = a.windowsHosts
         VStack(spacing: 10) {
             AnalystHistoryBanner(analyst: a)
-            if hosts.isEmpty {
+            if hosts.isEmpty && windowsHosts.isEmpty {
                 AnalystEmptyView(state: .noHosts)
             } else {
                 ScrollView {
@@ -228,6 +229,28 @@ struct AnalystServersTab: View {
                             }
                         } content: {
                             table(a, hosts)
+                        }
+                        if !windowsHosts.isEmpty {
+                            AnalystCard(title: "Máy Windows", subtitle: nil) {
+                            } content: {
+                                VStack(spacing: 0) {
+                                    ForEach(windowsHosts) { h in
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "desktopcomputer")
+                                                .foregroundStyle(Theme.textTertiary)
+                                            Text(h.displayName).lineLimit(1)
+                                            Text(HostPresentation.addressText(h))
+                                                .font(.system(size: 12.5, design: .monospaced))
+                                                .foregroundStyle(Theme.textSecondary)
+                                            Spacer()
+                                            Text("Máy Windows — không áp dụng")
+                                                .foregroundStyle(Theme.textSecondary)
+                                        }
+                                        .font(.system(size: 13))
+                                        .padding(.horizontal, 14).padding(.vertical, 8)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

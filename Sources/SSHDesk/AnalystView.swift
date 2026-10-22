@@ -208,7 +208,7 @@ struct AddHostsPopover: View {
 
     var body: some View {
         let folder = model.analyst.folder ?? ""
-        let candidates = model.hosts.filter { $0.project != folder }
+        let candidates = HostPresentation.sshHosts(model.hosts).filter { $0.project != folder }
         let groups = HostPicker.groups(candidates, query: query)
         VStack(alignment: .leading, spacing: 8) {
             Text("Thêm máy chủ vào “\(folder)”").font(.system(size: 13, weight: .semibold))

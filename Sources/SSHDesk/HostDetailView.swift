@@ -12,28 +12,38 @@ struct HostDetailView: View {
                 header
                 if let banner = model.banner { bannerView(banner) }
                 Button {
-                    Task { await model.openInWarp(host) }
+                    Task { await model.open(host) }
                 } label: {
-                    Label("Mở Warp", systemImage: "arrow.up.forward.square")
+                    Label(
+                        isWindows ? "Mở Windows App" : "Mở Warp",
+                        systemImage: "arrow.up.forward.square")
                 }
                 .buttonStyle(ProminentButtonStyle(fullWidth: true))
-                .help("Mở phiên SSH trong Warp (Return khi đang ở danh sách)")
+                .help(
+                    isWindows
+                        ? "Mở kết nối RDP trong Windows App (Return khi đang ở danh sách)"
+                        : "Mở phiên SSH trong Warp (Return khi đang ở danh sách)")
                 connectionCard
-                HStack(spacing: 10) {
-                    Button {
-                        model.transferSheet = .upload(host)
-                    } label: {
-                        Label("Tải lên", systemImage: "square.and.arrow.up")
+                if isWindows {
+                    Text("Mật khẩu nhập và lưu trong Windows App. SSH Desk không lưu mật khẩu Windows.")
+                        .font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                } else {
+                    HStack(spacing: 10) {
+                        Button {
+                            model.transferSheet = .upload(host)
+                        } label: {
+                            Label("Tải lên", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(OutlineButtonStyle(fullWidth: true))
+                        .help("Tải file/thư mục từ máy này lên server")
+                        Button {
+                            model.transferSheet = .download(host)
+                        } label: {
+                            Label("Tải về", systemImage: "square.and.arrow.down")
+                        }
+                        .buttonStyle(OutlineButtonStyle(fullWidth: true))
+                        .help("Tải file/thư mục từ server về máy này")
                     }
-                    .buttonStyle(OutlineButtonStyle(fullWidth: true))
-                    .help("Tải file/thư mục từ máy này lên server")
-                    Button {
-                        model.transferSheet = .download(host)
-                    } label: {
-                        Label("Tải về", systemImage: "square.and.arrow.down")
-                    }
-                    .buttonStyle(OutlineButtonStyle(fullWidth: true))
-                    .help("Tải file/thư mục từ server về máy này")
                 }
                 infoCard
             }
@@ -42,9 +52,11 @@ struct HostDetailView: View {
         .frame(width: Theme.detailWidth)
     }
 
+    private var isWindows: Bool { host.kind == .windowsRDP }
+
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "server.rack")
+            Image(systemName: isWindows ? "desktopcomputer" : "server.rack")
                 .font(.system(size: 22)).foregroundStyle(Theme.green)
                 .frame(width: 52, height: 52)
                 .background(Theme.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
@@ -62,14 +74,23 @@ struct HostDetailView: View {
             }
             Spacer(minLength: 0)
             Menu {
+                if isWindows {
+                    Button("Mở Windows App") { Task { await model.openInWindowsApp(host) } }
+                    Button("Hiện file .rdp trong Finder") {
+                        Task { await model.revealRDPFile(host) }
+                    }
+                    Divider()
+                }
                 Button("Sửa…") { model.form = .edit(host) }
                 Button {
                     model.beginDuplicate(host)
                 } label: {
                     Label("Nhân bản…", systemImage: "plus.square.on.square")
                 }
-                Button("Copy lệnh SSH") { Task { await model.copySSHCommand(host) } }
-                Button("Cài key…") { model.keys.pickKeyForHost = host }
+                if !isWindows {
+                    Button("Copy lệnh SSH") { Task { await model.copySSHCommand(host) } }
+                    Button("Cài key…") { model.keys.pickKeyForHost = host }
+                }
                 Divider()
                 Button("Xoá…", role: .destructive) { model.pendingDelete = host }
             } label: {
@@ -133,7 +154,9 @@ struct HostDetailView: View {
                     info("Bookmark", "\(b.name): \(b.path)")
                 }
                 if let last = host.lastLaunchRequestedAt {
-                    info("Mở Warp lần cuối", last.formatted(date: .abbreviated, time: .shortened))
+                    info(
+                        isWindows ? "Mở Windows App lần cuối" : "Mở Warp lần cuối",
+                        last.formatted(date: .abbreviated, time: .shortened))
                 }
             }
             .padding(14)
@@ -155,8 +178,12 @@ struct HostDetailView: View {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.amber)
             Text(banner.text).font(.system(size: 12.5))
             Spacer(minLength: 0)
-            Button("Copy lệnh SSH") { Task { await model.copySSHCommand(host) } }
-                .controlSize(.small)
+            if banner.showsAppStoreLink {
+                Button("Mở App Store") { model.openWindowsAppStore() }.controlSize(.small)
+            } else if !isWindows {
+                Button("Copy lệnh SSH") { Task { await model.copySSHCommand(host) } }
+                    .controlSize(.small)
+            }
             Button {
                 model.banner = nil
             } label: {

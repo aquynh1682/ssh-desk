@@ -70,6 +70,8 @@ struct AppAlert: Identifiable {
 struct Banner: Equatable {
     let text: String
     let copyHostID: UUID?
+    /// Hiện nút mở trang tải Windows App trên App Store.
+    var showsAppStoreLink = false
 }
 
 @MainActor @Observable
@@ -260,7 +262,7 @@ final class AppModel {
             func hit(_ s: String) -> Bool { s.range(of: q, options: opts) != nil }
             list = list.filter {
                 hit($0.displayName) || hit($0.hostName) || hit($0.user) || hit($0.project)
-                    || hit($0.sshConfigAlias ?? "") || $0.tags.contains(where: hit)
+                    || hit($0.rdpUsername) || hit($0.sshConfigAlias ?? "") || $0.tags.contains(where: hit)
             }
         }
         return byRecency ? list : HostPresentation.sortedByName(list, ascending: sortAscending)
@@ -458,6 +460,38 @@ final class AppModel {
         }
     }
 
+    /// Mở máy theo loại: Windows -> Windows App, còn lại -> Warp.
+    func open(_ host: HostProfile) async {
+        if host.kind == .windowsRDP { await openInWindowsApp(host) } else { await openInWarp(host) }
+    }
+
+    func openInWindowsApp(_ host: HostProfile) async {
+        guard let service else { return }
+        banner = nil
+        switch await service.openInWindowsApp(host) {
+        case .requested:
+            showToast("Đã yêu cầu Windows App mở kết nối — nhập mật khẩu trong Windows App")
+            await reload()
+        case .appUnavailable:
+            banner = Banner(text: "Chưa cài Windows App.", copyHostID: nil, showsAppStoreLink: true)
+        case .failed(let reason):
+            alert = AppAlert(title: "Không mở được Windows App", message: reason)
+        }
+    }
+
+    func openWindowsAppStore() {
+        NSWorkspace.shared.open(SystemWindowsAppHandler.appStoreURL)
+    }
+
+    /// Ghi file .rdp rồi hiện trong Finder.
+    func revealRDPFile(_ host: HostProfile) async {
+        guard let service else { return }
+        do {
+            let url = try await service.prepareRDPFile(for: host)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch { show(error, title: "Không tạo được file .rdp") }
+    }
+
     /// Copy một giá trị hiển thị (địa chỉ, port...). Chỉ dùng cho dữ liệu không bí mật.
     func copyValue(_ value: String, label: String) {
         NSPasteboard.general.clearContents()
@@ -619,6 +653,10 @@ final class AppModel {
         case ConnectionServiceError.missingAlias: return "Hồ sơ thiếu alias SSH."
         case ConnectionServiceError.importedHostReadOnly:
             return "Máy chủ import từ SSH config: app không sửa cấu hình của máy này."
+        case ConnectionServiceError.notSSHHost: return "Thao tác này chỉ dành cho máy Linux/SSH."
+        case ConnectionServiceError.notWindowsHost: return "Đây không phải máy Windows."
+        case let e as WindowsAppLauncherError: return "Lỗi ghi file .rdp: \(e)"
+        case let e as RDPRenderError: return "Không sinh được file .rdp: \(e)"
         case ConnectionServiceError.hostNotFound: return "Không tìm thấy hồ sơ (có thể đã bị xoá)."
         case let e as SSHKeyError: return e.description
         case KeyTaskError.spawnFailed(let s): return "Không chạy được tiến trình: \(s)"

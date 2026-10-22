@@ -15,6 +15,17 @@ public enum HostConnectionMode: String, Codable, Sendable {
     case existingSSHConfigAlias
 }
 
+/// Loại máy: Linux/SSH (mặc định) hoặc Windows mở bằng Windows App qua file `.rdp` (ADR-017).
+public enum HostKind: String, Codable, Sendable, CaseIterable {
+    case ssh
+    case windowsRDP
+}
+
+public enum RDPScreenMode: String, Codable, Sendable, CaseIterable {
+    case fullScreen
+    case window
+}
+
 public enum HostAuthMethod: String, Codable, Sendable, CaseIterable {
     case agent
     case keyFile
@@ -45,6 +56,9 @@ public enum HostValidationError: Error, Equatable {
     case selfJump
     /// Hồ sơ imported không được có jump host.
     case jumpHostNotAllowed
+    /// Trường RDP chứa ký tự điều khiển hoặc quá dài. `field` là tên trường.
+    case invalidRDPField(field: String)
+    case invalidRDPGateway(String)
 }
 
 /// Hồ sơ máy chủ. Không bao giờ chứa password/passphrase — chỉ `credentialReference` trỏ vào Keychain.
@@ -57,6 +71,23 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
     public var notes: String
     public var isFavorite: Bool
     public var connectionMode: HostConnectionMode
+    public var kind: HostKind
+
+    // Windows (RDP). Không bao giờ có password: người dùng nhập/lưu trong Windows App.
+    /// `DOMAIN\user` hoặc `user@domain`; rỗng = để Windows App hỏi.
+    public var rdpUsername: String
+    public var rdpDomain: String?
+    /// `hostname[:port]`.
+    public var rdpGateway: String?
+    public var rdpScreenMode: RDPScreenMode
+    public var rdpMultiMonitor: Bool
+    public var rdpRedirectClipboard: Bool
+    public var rdpAdminSession: Bool
+
+    /// Mặc định cổng RDP.
+    public static let defaultRDPPort = 3389
+    /// Giới hạn độ dài mỗi chuỗi RDP.
+    public static let maxRDPFieldLength = 256
 
     // Managed
     public var hostName: String
@@ -88,6 +119,14 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         notes: String = "",
         isFavorite: Bool = false,
         connectionMode: HostConnectionMode = .managed,
+        kind: HostKind = .ssh,
+        rdpUsername: String = "",
+        rdpDomain: String? = nil,
+        rdpGateway: String? = nil,
+        rdpScreenMode: RDPScreenMode = .fullScreen,
+        rdpMultiMonitor: Bool = false,
+        rdpRedirectClipboard: Bool = true,
+        rdpAdminSession: Bool = false,
         hostName: String = "",
         port: Int = 22,
         user: String = "",
@@ -112,6 +151,14 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         self.notes = notes
         self.isFavorite = isFavorite
         self.connectionMode = connectionMode
+        self.kind = kind
+        self.rdpUsername = rdpUsername
+        self.rdpDomain = rdpDomain
+        self.rdpGateway = rdpGateway
+        self.rdpScreenMode = rdpScreenMode
+        self.rdpMultiMonitor = rdpMultiMonitor
+        self.rdpRedirectClipboard = rdpRedirectClipboard
+        self.rdpAdminSession = rdpAdminSession
         self.hostName = hostName
         self.port = port
         self.user = user
@@ -158,6 +205,7 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
 
     /// Alias dùng cho `ssh -F <config app> <alias>`; nil nếu hồ sơ imported thiếu alias.
     public var sshAlias: String? {
+        guard kind == .ssh else { return nil }
         switch connectionMode {
         case .managed: return Self.managedAlias(for: id)
         case .existingSSHConfigAlias: return sshConfigAlias
@@ -183,6 +231,11 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         try noNUL(defaultLocalDirectory, "defaultLocalDirectory")
         try noNUL(defaultRemoteDirectory, "defaultRemoteDirectory")
         if let credentialReference { try noNUL(credentialReference, "credentialReference") }
+
+        if kind == .windowsRDP {
+            try validateRDP()
+            return
+        }
 
         switch connectionMode {
         case .managed:
@@ -215,6 +268,54 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
             else { throw HostValidationError.invalidSSHConfigPath }
             if jumpHostID != nil { throw HostValidationError.jumpHostNotAllowed }
         }
+    }
+
+    private func validateRDP() throws {
+        do { try SSHConfigWriter.validateHostName(hostName) } catch {
+            throw HostValidationError.invalidHostName(hostName)
+        }
+        guard (1...65535).contains(port) else { throw HostValidationError.invalidPort(port) }
+        try Self.checkRDPString(rdpUsername, "rdpUsername")
+        try Self.checkRDPString(rdpDomain ?? "", "rdpDomain")
+        let gateway = rdpGateway ?? ""
+        try Self.checkRDPString(gateway, "rdpGateway")
+        if !gateway.isEmpty && !Self.isValidGateway(gateway) {
+            throw HostValidationError.invalidRDPGateway(gateway)
+        }
+    }
+
+    /// Cấm ký tự điều khiển (nhất là CR/LF: chặn chèn thuộc tính vào file .rdp) và chuỗi quá dài.
+    static func checkRDPString(_ s: String, _ field: String) throws {
+        let bad = s.unicodeScalars.contains {
+            $0.value < 0x20 || $0.value == 0x7F || (0x80...0x9F).contains($0.value)
+                || $0.value == 0x2028 || $0.value == 0x2029
+        }
+        if bad || s.count > maxRDPFieldLength {
+            throw HostValidationError.invalidRDPField(field: field)
+        }
+    }
+
+    /// `hostname`, `hostname:port`, `[ipv6]`, `[ipv6]:port` hoặc IPv6 trần.
+    static func isValidGateway(_ g: String) -> Bool {
+        func hostOK(_ h: String) -> Bool { (try? SSHConfigWriter.validateHostName(h)) != nil }
+        func portOK(_ p: Substring) -> Bool {
+            p.allSatisfy(\.isASCII) && p.allSatisfy(\.isNumber) && (Int(p).map { (1...65535).contains($0) } ?? false)
+        }
+        if g.hasPrefix("[") {
+            guard let close = g.firstIndex(of: "]") else { return false }
+            let host = String(g[g.index(after: g.startIndex)..<close])
+            let rest = g[g.index(after: close)...]
+            guard hostOK(host), host.contains(":") else { return false }
+            if rest.isEmpty { return true }
+            return rest.hasPrefix(":") && portOK(rest.dropFirst())
+        }
+        let colons = g.filter { $0 == ":" }.count
+        if colons == 0 { return hostOK(g) }
+        if colons == 1 {
+            let parts = g.split(separator: ":", omittingEmptySubsequences: false)
+            return hostOK(String(parts[0])) && portOK(parts[1])
+        }
+        return hostOK(g)
     }
 
     private func noNUL(_ s: String, _ field: String) throws {

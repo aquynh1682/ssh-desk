@@ -4,8 +4,18 @@ import Foundation
 /// Không đọc nội dung file key — chỉ giữ đường dẫn.
 public struct HostDraft: Equatable, Sendable {
     public enum Field: Hashable, Sendable {
-        case displayName, hostName, user, port, identityFile, password, jumpHost, alias, general
+        case displayName, hostName, user, port, rdpUser, rdpDomain, rdpGateway, identityFile, password, jumpHost, alias,
+            general
     }
+
+    public var kind: HostKind = .ssh
+    public var rdpUsername = ""
+    public var rdpDomain = ""
+    public var rdpGateway = ""
+    public var rdpScreenMode: RDPScreenMode = .fullScreen
+    public var rdpMultiMonitor = false
+    public var rdpRedirectClipboard = true
+    public var rdpAdminSession = false
 
     public var displayName = ""
     public var hostName = ""
@@ -47,7 +57,24 @@ public struct HostDraft: Equatable, Sendable {
 
     public init() {}
 
+    /// Đổi loại máy; chuyển cổng mặc định (22 <-> 3389) nếu người dùng chưa sửa cổng.
+    public mutating func setKind(_ newKind: HostKind) {
+        guard newKind != kind else { return }
+        let p = portText.trimmingCharacters(in: .whitespaces)
+        if newKind == .windowsRDP && p == "22" { portText = String(HostProfile.defaultRDPPort) }
+        if newKind == .ssh && p == String(HostProfile.defaultRDPPort) { portText = "22" }
+        kind = newKind
+    }
+
     public init(host: HostProfile, hasSavedPassword: Bool = false) {
+        kind = host.kind
+        rdpUsername = host.rdpUsername
+        rdpDomain = host.rdpDomain ?? ""
+        rdpGateway = host.rdpGateway ?? ""
+        rdpScreenMode = host.rdpScreenMode
+        rdpMultiMonitor = host.rdpMultiMonitor
+        rdpRedirectClipboard = host.rdpRedirectClipboard
+        rdpAdminSession = host.rdpAdminSession
         displayName = host.displayName
         hostName = host.hostName
         user = host.user
@@ -80,6 +107,28 @@ public struct HostDraft: Equatable, Sendable {
         h.notes = notes
         h.remoteBookmarks = bookmarks.filter { !$0.name.isEmpty || !$0.path.isEmpty }
         if h.connectionMode == .existingSSHConfigAlias { return h }
+        h.kind = kind
+        if kind == .windowsRDP {
+            h.connectionMode = .managed
+            h.hostName = hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+            h.port = Int(portText.trimmingCharacters(in: .whitespaces)) ?? 0
+            h.rdpUsername = rdpUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+            let domain = rdpDomain.trimmingCharacters(in: .whitespacesAndNewlines)
+            h.rdpDomain = domain.isEmpty ? nil : domain
+            let gateway = rdpGateway.trimmingCharacters(in: .whitespacesAndNewlines)
+            h.rdpGateway = gateway.isEmpty ? nil : gateway
+            h.rdpScreenMode = rdpScreenMode
+            h.rdpMultiMonitor = rdpMultiMonitor
+            h.rdpRedirectClipboard = rdpRedirectClipboard
+            h.rdpAdminSession = rdpAdminSession
+            // Trường SSH không dùng. credentialReference giữ nguyên để form xoá item Keychain khi lưu.
+            h.user = ""
+            h.authMethod = .agent
+            h.identityFile = nil
+            h.jumpHostID = nil
+            h.remoteBookmarks = []
+            return h
+        }
         h.connectionMode = .managed
         h.hostName = hostName.trimmingCharacters(in: .whitespacesAndNewlines)
         h.user = user.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -101,7 +150,15 @@ public struct HostDraft: Equatable, Sendable {
         if displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             result[.displayName] = "Tên không được để trống."
         }
-        if !isImported {
+        if kind == .windowsRDP && !isImported {
+            let p = portText.trimmingCharacters(in: .whitespaces)
+            if Int(p) == nil || !(1...65535).contains(Int(p) ?? 0) {
+                result[.port] = "Cổng phải là số từ 1 đến 65535."
+            }
+            if hostName.trimmingCharacters(in: .whitespaces).isEmpty {
+                result[.hostName] = "Cần nhập địa chỉ máy chủ."
+            }
+        } else if !isImported {
             let p = portText.trimmingCharacters(in: .whitespaces)
             if Int(p) == nil || !(1...65535).contains(Int(p) ?? 0) {
                 result[.port] = "Cổng phải là số từ 1 đến 65535."
@@ -116,7 +173,7 @@ public struct HostDraft: Equatable, Sendable {
                 result[.identityFile] = "Hãy chọn file khoá riêng."
             }
         }
-        if authChoice == .password && !hasSavedPassword && !passwordEntered {
+        if kind == .ssh && authChoice == .password && !hasSavedPassword && !passwordEntered {
             result[.password] = "Nhập mật khẩu."
         }
         // Các quy tắc còn lại (ký tự cấm, newline...) lấy từ validate() của model.
@@ -131,7 +188,7 @@ public struct HostDraft: Equatable, Sendable {
 
     /// Có cần xoá mật khẩu đã lưu khi lưu không: đang có item Keychain mà người dùng chọn kiểu khác "Mật khẩu".
     public func removesStoredPassword(hasSavedPassword: Bool) -> Bool {
-        hasSavedPassword && authChoice != .password
+        hasSavedPassword && (kind == .windowsRDP || authChoice != .password)
     }
 
     public static func describe(_ e: HostValidationError) -> (Field, String) {
@@ -149,6 +206,12 @@ public struct HostDraft: Equatable, Sendable {
         case .containsNUL(let f): return (.general, "Trường \(f) chứa ký tự không hợp lệ.")
         case .selfJump: return (.jumpHost, "Máy không thể là bastion của chính nó.")
         case .jumpHostNotAllowed: return (.jumpHost, "Hồ sơ alias có sẵn không dùng bastion của app.")
+        case .invalidRDPField(let f):
+            let field: Field =
+                f == "rdpDomain" ? .rdpDomain : (f == "rdpGateway" ? .rdpGateway : .rdpUser)
+            return (field, "Giá trị không được chứa ký tự điều khiển và tối đa \(HostProfile.maxRDPFieldLength) ký tự.")
+        case .invalidRDPGateway:
+            return (.rdpGateway, "RD Gateway phải có dạng tên-máy hoặc tên-máy:cổng.")
         }
     }
 }

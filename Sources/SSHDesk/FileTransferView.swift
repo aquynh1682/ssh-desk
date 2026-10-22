@@ -16,7 +16,7 @@ struct FileTransferView: View {
                 HStack(alignment: .top, spacing: 14) {
                     LocalPaneView(browser: browser, local: browser.local)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    RemotePaneView(browser: browser, hosts: model.hosts)
+                    RemotePaneView(browser: browser, hosts: HostPresentation.sshHosts(model.hosts))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(minHeight: 300, maxHeight: .infinity)

@@ -6,6 +6,10 @@ public enum ConnectionServiceError: Error, Equatable {
     /// Hồ sơ imported: app không sửa (cấu hình nằm trong `~/.ssh/config` của người dùng).
     case importedHostReadOnly
     case hostNotFound
+    /// Thao tác chỉ dành cho máy Linux/SSH, nhưng host là máy Windows.
+    case notSSHHost
+    /// Thao tác chỉ dành cho máy Windows.
+    case notWindowsHost
 }
 
 /// Kết quả import: hồ sơ mới tạo và alias bị bỏ qua vì đã import từ cùng file.
@@ -20,6 +24,7 @@ public actor ConnectionService {
     public let appConfigURL: URL
     private let userConfigPath: String?
     private let launcher: WarpLauncher
+    private let rdpLauncher: WindowsAppLauncher
     private let credentials: (any CredentialStore)?
     private let askpassHelper: URL?
     private let now: @Sendable () -> Date
@@ -28,7 +33,8 @@ public actor ConnectionService {
     /// (xem `AppPaths.existingUserConfigPath()`).
     public init(
         repository: HostRepository, appConfigURL: URL, userConfigPath: String?,
-        launcher: WarpLauncher, credentials: (any CredentialStore)? = nil,
+        launcher: WarpLauncher, rdpLauncher: WindowsAppLauncher = WindowsAppLauncher(),
+        credentials: (any CredentialStore)? = nil,
         askpassHelper: URL? = nil, now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.credentials = credentials
@@ -37,6 +43,7 @@ public actor ConnectionService {
         self.appConfigURL = appConfigURL
         self.userConfigPath = userConfigPath
         self.launcher = launcher
+        self.rdpLauncher = rdpLauncher
         self.now = now
     }
 
@@ -157,6 +164,7 @@ public actor ConnectionService {
     @discardableResult
     public func useKey(hostID: UUID, privateKeyPath: String) async throws -> HostProfile {
         guard var host = try await repository.host(id: hostID) else { throw ConnectionServiceError.hostNotFound }
+        guard host.kind == .ssh else { throw ConnectionServiceError.notSSHHost }
         guard host.connectionMode == .managed else { throw ConnectionServiceError.importedHostReadOnly }
         host.authMethod = .keyFile
         host.identityFile = privateKeyPath
@@ -164,11 +172,16 @@ public actor ConnectionService {
     }
 
     public func delete(id: UUID) async throws {
-        let ref = try await repository.host(id: id)?.credentialReference
+        let stored = try await repository.host(id: id)
+        let ref = stored?.credentialReference
         try await repository.delete(id: id)
         if let ref { try? credentials?.delete(ref: ref) }
         try await regenerateSSHConfig()
-        try launcher.removeConfig(hostID: id)
+        if stored?.kind == .windowsRDP {
+            try rdpLauncher.removeFile(hostID: id)
+        } else {
+            try launcher.removeConfig(hostID: id)
+        }
     }
 
     // MARK: - Warp
@@ -185,6 +198,9 @@ public actor ConnectionService {
 
     public func openInWarpReport(_ host: HostProfile, newWindow: Bool = false) async -> WarpOpenReport {
         var notice: String?
+        guard host.kind == .ssh else {
+            return WarpOpenReport(result: .failed("Máy Windows không mở bằng Warp."), notice: nil)
+        }
         do {
             try host.validate()
             try await regenerateSSHConfig()
@@ -200,6 +216,26 @@ public actor ConnectionService {
         } catch {
             return WarpOpenReport(result: .failed("\(error)"), notice: nil)
         }
+    }
+
+    // MARK: - Windows App (RDP)
+
+    /// Sinh file .rdp rồi nhờ Windows App mở. Ghi `lastLaunchRequestedAt` khi `.requested`.
+    public func openInWindowsApp(_ host: HostProfile) async -> RDPLaunchResult {
+        guard host.kind == .windowsRDP else { return .failed("Đây không phải máy Windows.") }
+        let result = await rdpLauncher.launch(host)
+        if result == .requested {
+            do { try await repository.markLaunchRequested(id: host.id, at: now()) } catch {
+                return .failed("\(error)")
+            }
+        }
+        return result
+    }
+
+    /// Ghi file .rdp (không mở app) để hiện trong Finder.
+    public func prepareRDPFile(for host: HostProfile) throws -> URL {
+        guard host.kind == .windowsRDP else { throw ConnectionServiceError.notWindowsHost }
+        return try rdpLauncher.prepare(host)
     }
 
     // MARK: - Import

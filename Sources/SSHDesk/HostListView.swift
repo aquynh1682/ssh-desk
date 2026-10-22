@@ -27,8 +27,9 @@ struct EnvironmentBadge: View {
 /// Ô icon server (xanh lá khi đang chọn).
 struct ServerGlyph: View {
     var highlighted = false
+    var windows = false
     var body: some View {
-        Image(systemName: "server.rack")
+        Image(systemName: windows ? "desktopcomputer" : "server.rack")
             .font(.system(size: 17))
             .foregroundStyle(highlighted ? Theme.green : Theme.textSecondary)
             .frame(width: 24)
@@ -142,7 +143,7 @@ struct HostListView: View {
         // Return = Mở Warp; ↑/↓ đổi chọn. Chỉ nhận phím khi bảng đang giữ focus (ô tìm kiếm tự nhận phím của nó).
         .onKeyPress(.return) {
             guard let host = model.selectedHost else { return .ignored }
-            Task { await model.openInWarp(host) }
+            Task { await model.open(host) }
             return .handled
         }
         .onKeyPress(keys: [KeyEquivalent("d")]) { press in
@@ -218,7 +219,7 @@ struct HostListView: View {
         let selected = model.selection == host.id
         return HStack(spacing: 0) {
             HStack(spacing: 10) {
-                ServerGlyph(highlighted: selected)
+                ServerGlyph(highlighted: selected, windows: host.kind == .windowsRDP)
                 Text(host.displayName).font(.system(size: 14.5)).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -267,7 +268,7 @@ struct HostListView: View {
             TapGesture(count: 2).onEnded {
                 if RowTap.action(tapCount: 2) == .open {
                     model.selection = host.id
-                    Task { await model.openInWarp(host) }
+                    Task { await model.open(host) }
                 }
             }
         )
@@ -282,8 +283,13 @@ struct HostListView: View {
 
     @ViewBuilder
     private func hostActions(_ host: HostProfile) -> some View {
-        Button("Mở Warp") { Task { await model.openInWarp(host) } }
-        Button("Copy lệnh SSH") { Task { await model.copySSHCommand(host) } }
+        if host.kind == .windowsRDP {
+            Button("Mở Windows App") { Task { await model.openInWindowsApp(host) } }
+            Button("Hiện file .rdp trong Finder") { Task { await model.revealRDPFile(host) } }
+        } else {
+            Button("Mở Warp") { Task { await model.openInWarp(host) } }
+            Button("Copy lệnh SSH") { Task { await model.copySSHCommand(host) } }
+        }
         Divider()
         if !model.folders.isEmpty {
             Menu("Chuyển vào thư mục") {

@@ -64,7 +64,15 @@ final class AnalystModel {
     var hosts: [HostProfile] {
         guard let folder, let app else { return [] }
         return HostPresentation.sortedByName(
-            app.hosts.filter { $0.project == folder }, ascending: true)
+            HostPresentation.sshHosts(app.hosts).filter { $0.project == folder }, ascending: true)
+    }
+
+    /// Máy Windows trong thư mục: chỉ liệt kê, không thu thập.
+    var windowsHosts: [HostProfile] {
+        guard let folder, let app else { return [] }
+        return HostPresentation.sortedByName(
+            HostPresentation.windowsHosts(app.hosts).filter { $0.project == folder },
+            ascending: true)
     }
 
     func host(_ id: UUID) -> HostProfile? { app?.hosts.first { $0.id == id } }

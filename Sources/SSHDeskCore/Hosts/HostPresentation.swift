@@ -56,8 +56,29 @@ public enum HostPresentation {
         }
     }
 
-    /// Cột ĐỊA CHỈ: máy managed hiện host, máy imported hiện alias.
+    /// Chỉ máy Linux/SSH: dùng cho Truyền file, SSH Keys, Project Analyst, bastion.
+    public static func sshHosts(_ hosts: [HostProfile]) -> [HostProfile] {
+        hosts.filter { $0.kind == .ssh }
+    }
+
+    /// Máy Windows (RDP).
+    public static func windowsHosts(_ hosts: [HostProfile]) -> [HostProfile] {
+        hosts.filter { $0.kind == .windowsRDP }
+    }
+
+    /// `host:port` (IPv6 bọc `[ ]`) — luôn kèm port.
+    public static func hostPort(_ host: String, _ port: Int) -> String {
+        (host.contains(":") ? "[\(host)]" : host) + ":\(port)"
+    }
+
+    public static func screenText(_ host: HostProfile) -> String {
+        (host.rdpScreenMode == .fullScreen ? "Toàn màn hình" : "Cửa sổ")
+            + (host.rdpMultiMonitor ? ", nhiều màn hình" : "")
+    }
+
+    /// Cột ĐỊA CHỈ: máy managed hiện host, máy imported hiện alias, máy Windows hiện host:port.
     public static func addressText(_ host: HostProfile) -> String {
+        if host.kind == .windowsRDP { return hostPort(host.hostName, host.port) }
         switch host.connectionMode {
         case .managed: return host.hostName
         case .existingSSHConfigAlias: return host.sshConfigAlias ?? "?"
@@ -90,6 +111,23 @@ public enum HostPresentation {
     public static func connectionRows(_ host: HostProfile, jumpHostName: String?)
         -> [ConnectionRow]
     {
+        if host.kind == .windowsRDP {
+            var rows = [
+                ConnectionRow(label: "Địa chỉ", value: host.hostName, copyable: true),
+                ConnectionRow(label: "Port", value: String(host.port), copyable: true),
+            ]
+            if !host.rdpUsername.isEmpty {
+                rows.append(ConnectionRow(label: "User", value: host.rdpUsername, copyable: true))
+            }
+            if let d = host.rdpDomain, !d.isEmpty {
+                rows.append(ConnectionRow(label: "Domain", value: d, copyable: true))
+            }
+            if let g = host.rdpGateway, !g.isEmpty {
+                rows.append(ConnectionRow(label: "Gateway", value: g, copyable: true))
+            }
+            rows.append(ConnectionRow(label: "Hiển thị", value: screenText(host), copyable: false))
+            return rows
+        }
         switch host.connectionMode {
         case .managed:
             var rows = [

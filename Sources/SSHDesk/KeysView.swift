@@ -268,12 +268,13 @@ struct KeyInstallHostPicker: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
-                if model.hosts.isEmpty {
+                if HostPresentation.sshHosts(model.hosts).isEmpty {
                     Text("Chưa có máy chủ nào.").foregroundStyle(Theme.textSecondary).padding(8)
                 }
                 ForEach(HostPresentation.environmentOrder, id: \.self) { env in
                     let group = HostPresentation.sortedByName(
-                        model.hosts.filter { $0.environment == env }, ascending: true)
+                        HostPresentation.sshHosts(model.hosts).filter { $0.environment == env },
+                        ascending: true)
                     if !group.isEmpty {
                         Text(HostPresentation.title(for: env).uppercased())
                             .font(.system(size: 11, weight: .semibold)).tracking(0.6)

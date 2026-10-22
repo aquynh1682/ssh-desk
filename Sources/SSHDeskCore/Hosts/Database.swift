@@ -140,6 +140,17 @@ public final class Database: @unchecked Sendable {
             """,
             "CREATE INDEX idx_analyst_flows_run ON analyst_flows(run_id)",
         ]),
+        // v5: loại máy Windows (RDP, ADR-017). Dữ liệu cũ nhận giá trị mặc định = ssh.
+        Migration(statements: [
+            "ALTER TABLE hosts ADD COLUMN kind TEXT NOT NULL DEFAULT 'ssh'",
+            "ALTER TABLE hosts ADD COLUMN rdp_username TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE hosts ADD COLUMN rdp_domain TEXT",
+            "ALTER TABLE hosts ADD COLUMN rdp_gateway TEXT",
+            "ALTER TABLE hosts ADD COLUMN rdp_screen_mode TEXT NOT NULL DEFAULT 'fullScreen'",
+            "ALTER TABLE hosts ADD COLUMN rdp_multi_monitor INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE hosts ADD COLUMN rdp_redirect_clipboard INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE hosts ADD COLUMN rdp_admin_session INTEGER NOT NULL DEFAULT 0",
+        ]),
     ]
 
     private static let sqliteMagic = Data("SQLite format 3\0".utf8)

@@ -25,7 +25,9 @@ public actor HostRepository {
         id, display_name, project, environment, tags_json, notes, is_favorite, connection_mode, \
         host_name, port, user, auth_method, identity_file, jump_host_id, ssh_config_path, \
         ssh_config_alias, credential_reference, bookmarks_json, default_local_directory, \
-        default_remote_directory, created_at, updated_at, last_launch_requested_at
+        default_remote_directory, created_at, updated_at, last_launch_requested_at, \
+        kind, rdp_username, rdp_domain, rdp_gateway, rdp_screen_mode, rdp_multi_monitor, \
+        rdp_redirect_clipboard, rdp_admin_session
         """
 
     // MARK: - Đọc
@@ -219,7 +221,7 @@ public actor HostRepository {
     public func sshSpecs() throws -> [SSHHostSpec] {
         let hosts = try all()
         let byID = Dictionary(uniqueKeysWithValues: hosts.map { ($0.id, $0) })
-        return hosts.filter { $0.connectionMode == .managed }.map { h in
+        return hosts.filter { $0.kind == .ssh && $0.connectionMode == .managed }.map { h in
             var jump: String?
             if let jid = h.jumpHostID, let bastion = byID[jid] { jump = bastion.sshAlias }
             return SSHHostSpec(
@@ -247,7 +249,7 @@ public actor HostRepository {
             if let idx = path.firstIndex(of: current) {
                 throw HostRepositoryError.jumpCycle(Array(path[idx...]) + [current])
             }
-            guard let next = try self.host(id: current) else {
+            guard let next = try self.host(id: current), next.kind == .ssh else {
                 throw HostRepositoryError.jumpHostNotFound(current)
             }
             path.append(current)
@@ -269,6 +271,9 @@ public actor HostRepository {
             .text(h.defaultLocalDirectory), .text(h.defaultRemoteDirectory),
             .real(h.createdAt.timeIntervalSince1970), .real(h.updatedAt.timeIntervalSince1970),
             h.lastLaunchRequestedAt.map { .real($0.timeIntervalSince1970) } ?? .null,
+            .text(h.kind.rawValue), .text(h.rdpUsername), opt(h.rdpDomain), opt(h.rdpGateway),
+            .text(h.rdpScreenMode.rawValue), .int(h.rdpMultiMonitor ? 1 : 0),
+            .int(h.rdpRedirectClipboard ? 1 : 0), .int(h.rdpAdminSession ? 1 : 0),
         ]
         if insert {
             let marks = Array(repeating: "?", count: values.count + 1).joined(separator: ", ")
@@ -307,10 +312,12 @@ public actor HostRepository {
             default: throw bad("cột \(i)")
             }
         }
-        guard row.count == 23, let id = UUID(uuidString: try text(0)),
+        guard row.count == 31, let id = UUID(uuidString: try text(0)),
             let env = HostEnvironment(rawValue: try text(3)),
             let mode = HostConnectionMode(rawValue: try text(7)),
-            let auth = HostAuthMethod(rawValue: try text(11))
+            let auth = HostAuthMethod(rawValue: try text(11)),
+            let kind = HostKind(rawValue: try text(23)),
+            let screen = RDPScreenMode(rawValue: try text(27))
         else { throw bad("giá trị") }
         let tags = try? JSONDecoder().decode([String].self, from: Data(try text(4).utf8))
         let marks = try? JSONDecoder().decode(
@@ -320,7 +327,10 @@ public actor HostRepository {
         if case .null = row[22] {} else { launch = try date(22) }
         return HostProfile(
             id: id, displayName: try text(1), project: try text(2), environment: env, tags: tags,
-            notes: try text(5), isFavorite: try int(6) != 0, connectionMode: mode,
+            notes: try text(5), isFavorite: try int(6) != 0, connectionMode: mode, kind: kind,
+            rdpUsername: try text(24), rdpDomain: optText(25), rdpGateway: optText(26),
+            rdpScreenMode: screen, rdpMultiMonitor: try int(28) != 0,
+            rdpRedirectClipboard: try int(29) != 0, rdpAdminSession: try int(30) != 0,
             hostName: try text(8), port: Int(try int(9)), user: try text(10), authMethod: auth,
             identityFile: optText(12), jumpHostID: optText(13).flatMap(UUID.init(uuidString:)),
             sshConfigPath: optText(14), sshConfigAlias: optText(15),
