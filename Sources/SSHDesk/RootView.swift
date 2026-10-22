@@ -159,6 +159,10 @@ struct MainView: View {
                 }
             } else if model.sidebar == .keys {
                 Text("\(model.keys.keys.count) key")
+            } else if model.sidebar == .monitor {
+                Text(
+                    model.monitor.folder.map { "\(model.monitor.hosts.count) máy chủ trong “\($0)”" }
+                        ?? "Monitor")
             } else if model.sidebar == .analyst {
                 Text(
                     model.analyst.folder.map { "\(model.analyst.hosts.count) máy chủ trong “\($0)”" }
@@ -199,6 +203,9 @@ struct MainView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.sidebar == .analyst {
             AnalystView(model: model)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if model.sidebar == .monitor {
+            MonitorView(model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             FileTransferView(model: model)

@@ -51,6 +51,12 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 
 - [~] G3 (code xong, PM duyệt; chờ người dùng xem) Sửa UI Analyst theo phản hồi: khung Kết quả quá to/đè bản đồ, nhãn cạnh chồng nhau, thẻ server ưu tiên port có cạnh vào, ẩn/đánh dấu LISTEN loopback (:53 systemd-resolved)
 
+- [~] G4 (code xong, PM duyệt; chờ thử với Ping-Identity) Tự điền password cho prompt keyboard-interactive `(user@host) Password:` (ADR-010b) — PTY + askpass
+
+## Bước I — Monitor tài nguyên (ADR-019, người dùng yêu cầu)
+- [~] I1 (code xong, PM duyệt) Core: lệnh whitelist, parser /proc + df, tính CPU %, MonitorCoordinator (vòng làm mới, owner `.monitor`)
+- [~] I2 (code xong, PM duyệt; chờ người dùng xem) UI: mục Monitor ở sidebar, lưới thẻ theo thư mục, sparkline, Dừng/Tiếp tục, xác nhận PROD
+
 ## Bước H — Máy Windows (ADR-017, người dùng yêu cầu)
 - [x] H0 (người dùng) thử file .rdp thật (UTF-8 CRLF mở + đăng nhập được) với Windows App: host + user có điền sẵn không
 - [~] H1 (code xong, PM duyệt; chờ thử tay) Loại máy Windows (RDP): model + migration, form, sinh .rdp, Mở Windows App, ẩn chức năng SSH

@@ -2,6 +2,11 @@
 
 Ghi mới nhất ở trên. Mỗi phiên: làm gì, còn dở gì, bước tiếp theo.
 
+## 2026-10-22 — G3/H2, G4, Monitor
+- G3 (UI Analyst) + H2 (mật khẩu Windows qua clipboard, ADR-018) xong. Ảnh phản hồi "bảng quá to" của người dùng là bản cũ (app chạy từ build/ trước G3, chưa make install).
+- G4 (ADR-010b): tự điền prompt keyboard-interactive `(user@host) Password:` — nguyên nhân Analyst bắt nhập tay. I1+I2 Monitor (ADR-019). make check xanh 476 test.
+- **Chờ người dùng:** make install rồi thử Analyst (bảng gọn, tự điền password), Monitor trên Ping-Identity, máy Windows (H2). Sau đó: E3, Bước D, push + PR.
+
 ## 2026-10-21 — Phiên 1 (tiếp): nhận yêu cầu SSH Desk, lập đội
 - Nhận `CLAUDE_CODE_SSH_DESK_PROMPT.md` → viết lại spec, ADR-001..008, plan theo Bước A–D.
 - Đội: PM = agent chính (Opus); `.claude/agents/coder.md` (Sonnet), `.claude/agents/researcher.md` (Haiku).

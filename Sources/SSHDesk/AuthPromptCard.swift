@@ -27,6 +27,9 @@ extension AppModel {
         if let ap = analyst.activePrompt {
             return ap
         }
+        if let mp = monitor.activePrompt {
+            return mp
+        }
         let tabPrompts = (browser?.tabs ?? []).filter { $0.pendingPrompt != nil }
         let total = prompts.items.count + tabPrompts.count
         if let p = prompts.current {

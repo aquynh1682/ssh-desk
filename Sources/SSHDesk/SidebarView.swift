@@ -16,8 +16,9 @@ struct SidebarView: View {
                         badge: TransferPresentation.active(model.jobs).count)
                     row("Gần đây", "clock", item: .recent)
                     analystRow
+                    monitorRow
 
-                    if model.sidebar == .analyst {
+                    if model.sidebar == .analyst || model.sidebar == .monitor {
                         // PROJECTS thay MÔI TRƯỜNG + THƯ MỤC khi ở Project Analyst: project chính là thư mục.
                         ProjectsSection(model: model)
                     } else {
@@ -164,6 +165,28 @@ struct SidebarView: View {
                 Image(systemName: "point.3.connected.trianglepath.dotted").frame(width: 20)
                     .foregroundStyle(selected ? Theme.textPrimary : Theme.textSecondary)
                 Text("Project Analyst").lineLimit(1)
+                Spacer(minLength: 4)
+            }
+            .font(.system(size: 13.5))
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? Theme.rowSelected : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var monitorRow: some View {
+        let selected = model.sidebar == .monitor
+        return Button {
+            model.sidebar = .monitor
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "gauge.with.dots.needle.67percent").frame(width: 20)
+                    .foregroundStyle(selected ? Theme.textPrimary : Theme.textSecondary)
+                Text("Monitor").lineLimit(1)
                 Spacer(minLength: 4)
             }
             .font(.system(size: 13.5))
@@ -344,22 +367,28 @@ struct FolderNameSheet: View {
     }
 }
 
-/// Mục PROJECTS (chỉ hiện ở Project Analyst): thư mục dạng cây; mở ra thấy máy chủ, chấm phiên, badge môi trường.
+/// Mục PROJECTS (chỉ hiện ở Project Analyst và Monitor): thư mục dạng cây; mở ra thấy máy chủ, chấm phiên, badge môi trường.
 private struct ProjectsSection: View {
     @Bindable var model: AppModel
 
     var body: some View {
         let analyst = model.analyst
+        let monitor = model.monitor
+        let inMonitor = model.sidebar == .monitor
         Text("PROJECTS")
             .font(.system(size: 11, weight: .semibold)).tracking(0.6)
             .foregroundStyle(Theme.textTertiary)
             .padding(.horizontal, 10).padding(.top, 16).padding(.bottom, 4)
         ForEach(model.folderCounts, id: \.name) { c in
-            let open = analyst.expanded.contains(c.name)
-            let selected = analyst.folder == c.name
+            let open = inMonitor ? monitor.expanded.contains(c.name) : analyst.expanded.contains(c.name)
+            let selected = (inMonitor ? monitor.folder : analyst.folder) == c.name
             HStack(spacing: 6) {
                 Button {
-                    if open { analyst.expanded.remove(c.name) } else { analyst.expanded.insert(c.name) }
+                    if inMonitor {
+                        if open { monitor.expanded.remove(c.name) } else { monitor.expanded.insert(c.name) }
+                    } else {
+                        if open { analyst.expanded.remove(c.name) } else { analyst.expanded.insert(c.name) }
+                    }
                 } label: {
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
                         .rotationEffect(.degrees(open ? 90 : 0))
@@ -368,7 +397,7 @@ private struct ProjectsSection: View {
                 }
                 .buttonStyle(.plain).accessibilityLabel(open ? "Thu gọn \(c.name)" : "Mở rộng \(c.name)")
                 Button {
-                    analyst.select(c.name)
+                    if inMonitor { monitor.select(c.name) } else { analyst.select(c.name) }
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "folder.fill").foregroundStyle(Theme.blue)
@@ -388,10 +417,11 @@ private struct ProjectsSection: View {
                 let hosts = HostPresentation.sortedByName(
                     model.hosts.filter { $0.project == c.name }, ascending: true)
                 ForEach(hosts) { h in
+                    let live = inMonitor ? monitor.states[h.id]?.status == .ok : analyst.isLive(h.id)
                     HStack(alignment: .top, spacing: 8) {
-                        Circle().fill(analyst.isLive(h.id) ? Theme.green : Theme.textTertiary)
+                        Circle().fill(live ? Theme.green : Theme.textTertiary)
                             .frame(width: 8, height: 8).padding(.top, 5)
-                            .accessibilityLabel(analyst.isLive(h.id) ? "Đã kết nối" : "Chưa kết nối")
+                            .accessibilityLabel(live ? "Đã kết nối" : "Chưa kết nối")
                         VStack(alignment: .leading, spacing: 1) {
                             Text(h.displayName).font(.system(size: 13)).lineLimit(1)
                             Text(HostPresentation.addressText(h))

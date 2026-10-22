@@ -39,6 +39,12 @@ private let tableCases: [Case] = [
     Case(
         name: "passphrase", prompt: "Enter passphrase for key '/Users/me/.ssh/id_ed25519': ",
         expect: .askTTY(echo: false)),
+    Case(
+        name: "kbd-int Verification code", prompt: "(deploy@web) Verification code: ",
+        expect: .askTTY(echo: false)),
+    Case(
+        name: "kbd-int password nhưng cha không phải ssh", prompt: "(deploy@web) Password: ",
+        parent: "/bin/sh", expect: .askTTY(echo: false)),
     Case(name: "OTP", prompt: "Verification code: ", expect: .askTTY(echo: false)),
     Case(name: "OTP kết thúc bằng password:", prompt: "OTP password: ", expect: .askTTY(echo: false)),
     Case(name: "token password", prompt: "Token password: ", expect: .askTTY(echo: false)),

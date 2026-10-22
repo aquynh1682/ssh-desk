@@ -9,6 +9,8 @@ public actor SessionPool {
         case browser
         /// Phiên do Project Analyst tự mở: Analyst đóng khi xong.
         case analyst
+        /// Phiên do Monitor tài nguyên tự mở (ADR-019): Monitor đóng khi dừng/rời màn.
+        case monitor
     }
 
     private struct Entry {

@@ -10,7 +10,7 @@ public enum CredentialConstants {
 
 /// Loại câu hỏi mà ssh gửi qua SSH_ASKPASS.
 public enum AskpassPromptClass: Equatable, Sendable {
-    /// Câu hỏi password của tài khoản (`user@host's password:`).
+    /// Câu hỏi password của tài khoản (`user@host's password:` hoặc `(user@host) Password:` của keyboard-interactive).
     case password
     /// Bí mật khác: passphrase, OTP, mã xác minh... (tắt echo).
     case secret

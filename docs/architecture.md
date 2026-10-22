@@ -95,6 +95,13 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
 - **Quy tắc tự điền password qua PTY (truyền file, master của tab duyệt file) — PM chốt sau review E2:** không tự điền nếu host có jumpHostID; host managed chỉ tự điền khi prompt khớp đúng `<user>@<hostName>'s password:` (không phân biệt hoa thường phần host) — prompt của bastion sẽ không khớp; host imported: tự điền lần đầu (rủi ro ProxyJump trong config người dùng, ghi KNOWN_LIMITATIONS). Mỗi job/phiên chỉ tự điền 1 lần.
 - Chưa kiểm chứng với ssh thật: prompt `password:` qua askpass, hộp thoại ACL Keychain khi chạy từ .app (ký ad-hoc có thể hỏi lại sau mỗi lần build).
 
+- **ADR-010b (PM chốt 2026-10-22, người dùng báo Project Analyst không tự nhập password):** cả 5 host Ping-Identity đều có password lưu và không có bastion, nhưng vẫn phải nhập tay → server dùng keyboard-interactive (PAM). OpenSSH ≥ 8.4 hiển thị prompt này dạng `(<user>@<host>) Password:`. Mở rộng quy tắc tự điền (PTY lẫn askpass của Warp):
+  - Host managed: điền khi prompt khớp `<user>@<hostName>'s password:` **hoặc** `(<user>@<hostName>) Password:` — phần trong ngoặc khớp đúng user và hostName (host không phân biệt hoa thường), phần sau ngoặc sau khi trim phải đúng `password:` (không phân biệt hoa thường). `(...) Verification code:`, `OTP`, `Password for ...`, `Password:` trơn → không điền.
+  - Prompt kbd-int của bastion mang user@host của bastion → không khớp; host có jumpHostID vẫn không bao giờ điền.
+  - Askpass (Warp): `AskpassDecision` phân loại `(u@h) Password:` là `.password` (vẫn 1 lần mỗi tiến trình ssh, cha phải là `/usr/bin/ssh`).
+  - Vẫn chỉ điền 1 lần mỗi phiên/job.
+  - **Đã làm (G4, PM duyệt):** `PasswordAutofillPolicy.matchesKeyboardInteractivePrompt` + test bảng; `PromptDetector`/`AskpassDecision` vốn đã phân loại đúng. Chưa kiểm chứng với server PAM thật.
+
 ## ADR-011: Local port forward (-L) — Đã chốt (người dùng chọn), làm sau Bước C
 - Mỗi host có danh sách forward đã lưu: `localPort` → `remoteHost:remotePort` (mặc định remoteHost `localhost` phía server).
 - Sinh vào Host block của app bằng `LocalForward` (bind `127.0.0.1` mặc định, không mở ra LAN), hoặc chạy phiên forward riêng `ssh -N -L ...` qua PTY runner khi người dùng bấm "Mở tunnel" (có trạng thái chạy/dừng, huỷ theo process group).
@@ -124,7 +131,7 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
 - Upload trong màn duyệt file: dùng listing hiện tại để kiểm tra tên trùng trước (không nguyên tử) → hỏi Ghi đè/Bỏ qua.
 - **Đã làm (F2, PM duyệt):** màn Truyền file theo mockup (thay màn Truyền file + Lịch sử cũ); logic thuần trong `Sources/SSHDeskCore/Browser/`; scp dùng master của tab qua `-o ControlPath` (không lưu DB; master chết → chạy trực tiếp); `PasswordAutofillPolicy` dùng chung.
 - **Upload thư mục trong màn duyệt file: đích = thư mục cha** (`scp -r src host:<remoteDir>`) → thư mục trùng tên được **gộp** (file trùng bị ghi đè, file khác giữ nguyên; kiểm chứng F2). Hộp thoại xung đột ghi rõ "gộp". (Sheet Tải lên cũ ở màn Máy chủ vẫn dùng đích `<dir>/<tên>` → lồng khi trùng, như ADR-008.)
-- Prompt `Password:` trơn (PAM/keyboard-interactive) không khớp mẫu `<user>@<host>'s password:` → không tự điền, người dùng nhập tay.
+- Prompt `Password:` trơn (PAM/keyboard-interactive) không khớp mẫu `<user>@<host>'s password:` → không tự điền, người dùng nhập tay. **(Thay bằng ADR-010b.)**
 - Đóng tab khi còn job của host đó → hỏi xác nhận. Kéo thả dùng UTType riêng khai báo trong Info.plist (chỉ chạy trong .app, không đảm bảo với `swift run`).
 
 ## ADR-014: Màn SSH Keys (E1) — Đã chốt
@@ -193,3 +200,15 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
   - Thông báo rõ: "Đã copy mật khẩu — dán (⌘V) vào Windows App. Tự xoá sau 30 giây."
 - **Rủi ro chấp nhận (ghi KNOWN_LIMITATIONS):** trong 30 giây app khác trên Mac đọc được clipboard; nếu bật chia sẻ clipboard của RDP, password có thể đồng bộ vào clipboard của máy Windows sau khi kết nối.
 - Không tự gõ bằng Accessibility (vẫn cấm).
+
+## ADR-019: Monitor tài nguyên server — Đã chốt (người dùng yêu cầu 2026-10-22)
+- **Vị trí:** mục "Monitor" trong WORKSPACE ở sidebar, dưới Project Analyst. Dùng chung danh sách PROJECTS (thư mục) như Analyst: chọn thư mục → lưới thẻ, mỗi thẻ là một host SSH của thư mục (bỏ qua máy Windows). Chỉ hỗ trợ Linux; host khác hoặc thiếu `/proc` → thẻ báo "Không hỗ trợ".
+- **Chỉ số mỗi thẻ:** CPU % (cả máy), load 1/5/15 + số nhân, RAM dùng/tổng (MemTotal − MemAvailable), swap, đĩa (mỗi mount thật: bỏ tmpfs/devtmpfs/overlay/squashfs, tối đa 4, ưu tiên `/`), uptime, thời điểm cập nhật. Ngưỡng màu: ≥ 80% vàng, ≥ 90% đỏ. Sparkline CPU/RAM 60 mẫu gần nhất (chỉ trong bộ nhớ, không lưu DB).
+- **Lệnh (whitelist cố định, chỉ-xem, không sudo, không input người dùng):** `cat /proc/stat /proc/meminfo /proc/loadavg /proc/uptime` (một lệnh), `nproc`, `df -P -k`. CPU % tính từ hiệu hai lần đọc `/proc/stat` liên tiếp (lần đầu hiện "—"). Thêm vào `AnalystCommand` hoặc enum lệnh riêng cùng cơ chế `RemoteCommandRunner` (ControlMaster=no, BatchMode=yes, timeout, cắt stdout).
+- **Kết nối:** `SessionPool` + `SessionConnector` (owner mới `.monitor`), tự điền password theo ADR-010b. Dùng lại phiên đang mở của Truyền file/Analyst. Phiên Monitor tự mở được đóng khi rời màn Monitor, đổi thư mục hoặc bấm Dừng.
+- **Làm mới:** mỗi 5 giây (chọn 5/10/30 giây), chỉ khi màn Monitor đang hiện; có nút Dừng/Tiếp tục. Mỗi host chạy độc lập, tối đa 4 host song song; một host lỗi không chặn host khác. Không chồng vòng: vòng trước chưa xong thì bỏ lượt.
+- **PROD:** hỏi xác nhận một lần khi bắt đầu theo dõi thư mục có host PROD (liệt kê lệnh), có hiệu lực tới khi Dừng/rời màn/đổi thư mục.
+- **Ngoài phạm vi v1:** top tiến trình, lịch sử dài hạn, cảnh báo/thông báo, mạng/IO.
+- **Đã làm (I1+I2, PM duyệt):** `Sources/SSHDeskCore/Monitor/` (MonitorCommand whitelist 3 lệnh, parser, MonitorMath/History/Level, MonitorCoordinator + owner `.monitor`), màn Monitor. PM duyệt các lựa chọn của coder: host **kết nối thất bại/không hỗ trợ không tự thử lại** mỗi chu kỳ (tránh khoá tài khoản khi sai password) — người dùng bấm "Thử lại"; lỗi lệnh (timeout, mất phiên) thử lại vòng sau. Huỷ prompt xác thực = dừng Monitor. df bỏ trùng theo filesystem; thiếu `nproc` → đếm `cpuN`; thiếu `MemAvailable` → `MemFree+Buffers+Cached`. Đổi thư mục/Tiếp tục hỏi lại PROD.
+- Chưa kiểm chứng: chạy thật với server Linux, giao diện.
+

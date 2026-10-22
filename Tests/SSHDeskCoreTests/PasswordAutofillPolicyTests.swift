@@ -93,6 +93,36 @@ struct PasswordAutofillPolicyTests {
             name: "user dài hơn 30 ký tự bị ssh cắt", host: managed(user: String(repeating: "u", count: 40)),
             prompt: .password(String(repeating: "u", count: 30) + "@web.example.com's password:"),
             alreadyFilled: false, expected: true),
+        Row(
+            name: "kbd-int khớp", host: managed(),
+            prompt: .password("(deploy@web.example.com) Password: "), alreadyFilled: false, expected: true),
+        Row(
+            name: "kbd-int host hoa thường + password hoa", host: managed(),
+            prompt: .password("(deploy@WEB.example.com) PASSWORD:"), alreadyFilled: false, expected: true),
+        Row(
+            name: "kbd-int host khác", host: managed(),
+            prompt: .password("(deploy@otherhost) Password:"), alreadyFilled: false, expected: false),
+        Row(
+            name: "kbd-int user khác", host: managed(),
+            prompt: .password("(root@web.example.com) Password:"), alreadyFilled: false, expected: false),
+        Row(
+            name: "kbd-int Verification code", host: managed(),
+            prompt: .password("(deploy@web.example.com) Verification code:"), alreadyFilled: false, expected: false),
+        Row(
+            name: "kbd-int OTP", host: managed(),
+            prompt: .password("(deploy@web.example.com) OTP:"), alreadyFilled: false, expected: false),
+        Row(
+            name: "Password for x", host: managed(),
+            prompt: .password("Password for deploy:"), alreadyFilled: false, expected: false),
+        Row(
+            name: "kbd-int có bastion", host: managed(jump: UUID()),
+            prompt: .password("(deploy@web.example.com) Password:"), alreadyFilled: false, expected: false),
+        Row(
+            name: "kbd-int host là hậu tố", host: managed(),
+            prompt: .password("(deploy@evilweb.example.com) Password:"), alreadyFilled: false, expected: false),
+        Row(
+            name: "kbd-int chữ thừa sau ngoặc", host: managed(),
+            prompt: .password("(deploy@web.example.com) New Password:"), alreadyFilled: false, expected: false),
     ]
 
     @Test(arguments: rows) func table(_ row: Row) {

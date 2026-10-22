@@ -79,11 +79,19 @@ final class FileBrowserModel {
             dialog = .error("Không mở được “\(host.displayName)”", "Hồ sơ thiếu alias SSH.")
             return
         }
-        if await app?.sessionPool.owner(of: host.id) == .analyst {
+        switch await app?.sessionPool.owner(of: host.id) {
+        case .analyst:
             dialog = .error(
                 "Không mở được “\(host.displayName)”",
                 "Project Analyst đang dùng kết nối của máy này. Hãy thử lại sau khi lần chạy kết thúc.")
             return
+        case .monitor:
+            dialog = .error(
+                "Không mở được “\(host.displayName)”",
+                "Monitor đang dùng kết nối của máy này. Hãy dừng Monitor hoặc rời màn Monitor rồi thử lại.")
+            return
+        case .browser, nil:
+            break
         }
         do {
             if socketDirectory == nil { socketDirectory = try SocketDirectory.ensure() }

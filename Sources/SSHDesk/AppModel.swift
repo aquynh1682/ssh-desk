@@ -12,11 +12,12 @@ enum SidebarItem: Hashable {
     case uncategorized
     case transfers
     case analyst
+    case monitor
     case keys
 
     var isHostSection: Bool {
         switch self {
-        case .transfers, .analyst, .keys: return false
+        case .transfers, .analyst, .monitor, .keys: return false
         default: return true
         }
     }
@@ -123,6 +124,8 @@ final class AppModel {
     let sessionPool = SessionPool()
     /// Màn "Project Analyst" (ADR-016).
     @ObservationIgnored lazy var analyst = AnalystModel(app: self)
+    /// Màn "Monitor" tài nguyên server (ADR-019).
+    @ObservationIgnored lazy var monitor = MonitorModel(app: self)
     private(set) var analystRepository: AnalystRunRepository?
     private var transferRepository: TransferRepository?
     private var eventsTask: Task<Void, Never>?
@@ -256,7 +259,7 @@ final class AppModel {
             byRecency = true
         case .folder(let p): list = list.filter { $0.project == p }
         case .uncategorized: list = list.filter { $0.project.isEmpty }
-        case .transfers, .analyst, .keys: break
+        case .transfers, .analyst, .monitor, .keys: break
         }
         list = HostPresentation.filter(list, environment: effectiveEnvironment)
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -273,7 +276,7 @@ final class AppModel {
 
     var columnTitle: String {
         switch sidebar {
-        case .all, .environment, .transfers, .analyst, .keys: return "Máy chủ"
+        case .all, .environment, .transfers, .analyst, .monitor, .keys: return "Máy chủ"
         case .favorites: return "Yêu thích"
         case .recent: return "Gần đây"
         case .folder(let p): return p
@@ -307,6 +310,7 @@ final class AppModel {
             if case .folder(let f) = sidebar, !folders.contains(f) { sidebar = .all }
             browser?.hostsChanged(hosts)
             analyst.foldersChanged()
+            monitor.foldersChanged()
             if let s = selection, !hosts.contains(where: { $0.id == s }) { selection = nil }
         } catch { show(error, title: "Không đọc được dữ liệu") }
     }
@@ -627,6 +631,7 @@ final class AppModel {
     /// Dùng khi thoát: đóng mọi master của tab duyệt file (`ssh -O exit`), sau khi job đã xử lý xong.
     func closeAllSessions() async {
         await analyst.shutdown()
+        await monitor.shutdown()
         await browser?.closeAll()
     }
 

@@ -5,8 +5,9 @@ import Foundation
 ///
 /// - Chỉ điền cho prompt `.password`, tối đa một lần mỗi job/phiên (`alreadyFilled`).
 /// - Host có bastion (`jumpHostID`): KHÔNG điền (ssh con của ProxyJump cũng hỏi password, có thể là của bastion).
-/// - Host managed: chỉ điền khi prompt đúng dạng `<user>@<hostName>'s password:` (host không phân biệt
-///   hoa thường, bỏ khoảng trắng cuối). Prompt của bastion hay prompt `Password:` trơn không khớp.
+/// - Host managed: chỉ điền khi prompt đúng dạng `<user>@<hostName>'s password:` hoặc (keyboard-interactive,
+///   OpenSSH >= 8.4, ADR-010b) `(<user>@<hostName>) Password:` (host và chữ `Password:` không phân biệt
+///   hoa thường, bỏ khoảng trắng cuối). Prompt của bastion, `Password:` trơn, `Verification code:` không khớp.
 /// - Host imported: điền lần đầu (rủi ro ProxyJump trong `~/.ssh/config` của người dùng: KNOWN_LIMITATIONS).
 public enum PasswordAutofillPolicy {
     public static func shouldAutofill(
@@ -27,6 +28,7 @@ public enum PasswordAutofillPolicy {
             return true
         case .managed:
             return matchesManagedPrompt(promptText, user: host.user, hostName: host.hostName)
+                || matchesKeyboardInteractivePrompt(promptText, user: host.user, hostName: host.hostName)
         }
     }
 
@@ -39,6 +41,21 @@ public enum PasswordAutofillPolicy {
         guard let at = body.lastIndex(of: "@") else { return false }
         let promptUser = String(body[..<at])
         let promptHost = String(body[body.index(after: at)...])
+        guard !user.isEmpty, !hostName.isEmpty else { return false }
+        return promptUser == String(user.prefix(30))
+            && promptHost.caseInsensitiveCompare(String(hostName.prefix(128))) == .orderedSame
+    }
+
+    /// Prompt keyboard-interactive `(<user>@<hostName>) Password:` (ADR-010b).
+    static func matchesKeyboardInteractivePrompt(_ text: String, user: String, hostName: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("("), let close = trimmed.lastIndex(of: ")") else { return false }
+        let rest = trimmed[trimmed.index(after: close)...].trimmingCharacters(in: .whitespaces)
+        guard rest.caseInsensitiveCompare("password:") == .orderedSame else { return false }
+        let inner = String(trimmed[trimmed.index(after: trimmed.startIndex)..<close])
+        guard let at = inner.lastIndex(of: "@") else { return false }
+        let promptUser = String(inner[..<at])
+        let promptHost = String(inner[inner.index(after: at)...])
         guard !user.isEmpty, !hostName.isEmpty else { return false }
         return promptUser == String(user.prefix(30))
             && promptHost.caseInsensitiveCompare(String(hostName.prefix(128))) == .orderedSame
