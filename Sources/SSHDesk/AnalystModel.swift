@@ -11,6 +11,8 @@ enum AnalystTab: String, CaseIterable {
 enum AnalystSelection: Equatable {
     case node(UUID)
     case flow(Flow)
+    /// Mũi tên gộp nhiều cổng cùng (nguồn, đích).
+    case link(source: UUID, destination: UUID)
 }
 
 /// Yêu cầu xác nhận trước khi chạy (có server PROD).
@@ -37,6 +39,8 @@ final class AnalystModel {
     var tab: AnalystTab = .map
     var mode: AnalystMapMode = .tests
     var selection: AnalystSelection?
+    /// Chiều cao khung bảng do người dùng kéo (chỉ nhớ trong phiên); `nil` = tự theo nội dung.
+    var tableHeightOverride: Double?
     /// Thư mục đang mở rộng ở cây PROJECTS (chỉ nhớ trong phiên).
     var expanded: Set<String> = []
 
@@ -73,6 +77,15 @@ final class AnalystModel {
         return HostPresentation.sortedByName(
             HostPresentation.windowsHosts(app.hosts).filter { $0.project == folder },
             ascending: true)
+    }
+
+    /// Kết nối `f` đang được chọn (trực tiếp hoặc qua mũi tên gộp chứa nó).
+    func isSelected(_ f: Flow) -> Bool {
+        switch selection {
+        case .flow(let x): return x == f
+        case .link(let s, let d): return f.source == s && f.destination == d
+        default: return false
+        }
     }
 
     func host(_ id: UUID) -> HostProfile? { app?.hosts.first { $0.id == id } }

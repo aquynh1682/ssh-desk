@@ -104,14 +104,15 @@ struct AnalystResultsTable: View {
                 cell("Port", flex: false).frame(width: 90, alignment: .leading)
                 cell("Kết quả", flex: false).frame(width: 150, alignment: .leading)
                 cell("Thời gian", flex: false).frame(width: 80, alignment: .leading)
-                Color.clear.frame(width: 30)
+                // Đặt cả chiều cao: Color.clear tự do sẽ giãn dọc và đẩy header xa tiêu đề.
+                Color.clear.frame(width: 30, height: 1)
             }
-            .padding(.horizontal, 14).padding(.vertical, 6)
+            .padding(.horizontal, 14).frame(height: 30)
             Divider().overlay(Theme.divider)
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(rows) { row in
-                        let selected = analyst.selection == .flow(row.flow)
+                        let selected = analyst.isSelected(row.flow)
                         HStack(spacing: 8) {
                             Text(row.source).frame(maxWidth: .infinity, alignment: .leading)
                             Text(row.destination).frame(maxWidth: .infinity, alignment: .leading)
@@ -138,7 +139,7 @@ struct AnalystResultsTable: View {
                             .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 30)
                         }
                         .font(.system(size: 13))
-                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .padding(.horizontal, 14).frame(height: AnalystPanelLayout.rowHeight)
                         .background(
                             row.isFailure
                                 ? Theme.red.opacity(0.12)

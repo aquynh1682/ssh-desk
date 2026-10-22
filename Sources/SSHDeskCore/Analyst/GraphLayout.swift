@@ -57,7 +57,7 @@ public struct GraphLayoutResult: Sendable, Equatable {
 public enum GraphLayout {
     public static func layout(
         nodes: [UUID], edges: [GraphEdgeInput],
-        nodeSize: GraphSize = GraphSize(width: 190, height: 106),
+        nodeSize: GraphSize = GraphSize(width: 190, height: 140),
         spacing: GraphSize = GraphSize(width: 80, height: 90), margin: Double = 40
     ) -> GraphLayoutResult {
         let nodeSet = Set(nodes)
