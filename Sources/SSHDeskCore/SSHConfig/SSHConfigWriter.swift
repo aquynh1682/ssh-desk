@@ -9,18 +9,21 @@ public struct SSHHostSpec: Sendable, Equatable {
     public var user: String
     /// Đường dẫn tuyệt đối (caller phải tự mở rộng `~`).
     public var identityFile: String?
+    /// Giá trị `IdentityAgent` hiệu lực (đã chọn host > mặc định); nil = không ghi directive. Validate khi sinh.
+    public var identityAgent: String?
     /// Alias bastion do app sinh hoặc alias có sẵn trong config của người dùng.
     public var jumpAlias: String?
 
     public init(
         alias: String, hostName: String, port: Int = 22, user: String,
-        identityFile: String? = nil, jumpAlias: String? = nil
+        identityFile: String? = nil, jumpAlias: String? = nil, identityAgent: String? = nil
     ) {
         self.alias = alias
         self.hostName = hostName
         self.port = port
         self.user = user
         self.identityFile = identityFile
+        self.identityAgent = identityAgent
         self.jumpAlias = jumpAlias
     }
 }
@@ -39,6 +42,7 @@ public enum SSHConfigError: Error, Equatable {
     case duplicateAlias(String)
     case selfJump(String)
     case jumpCycle([String])
+    case invalidIdentityAgent(IdentityAgentError)
 }
 
 /// Sinh file SSH config do app sở hữu (ADR-006). Thuần logic: không chạy ssh, không mạng.
@@ -67,6 +71,9 @@ public enum SSHConfigWriter {
             if let identityFile = host.identityFile {
                 lines.append("    IdentityFile \(quote(identityFile))")
                 lines.append("    IdentitiesOnly yes")
+            }
+            if let agent = host.identityAgent {
+                lines.append("    IdentityAgent \(quote(agent))")
             }
             if let jump = host.jumpAlias {
                 lines.append("    ProxyJump \(jump)")
@@ -128,6 +135,11 @@ public enum SSHConfigWriter {
         }
         if let identityFile = host.identityFile {
             try validatePath(identityFile, field: "identityFile")
+        }
+        if let agent = host.identityAgent {
+            do { try IdentityAgentPath.validate(agent) } catch let e as IdentityAgentError {
+                throw SSHConfigError.invalidIdentityAgent(e)
+            }
         }
         if let jump = host.jumpAlias {
             try validateAlias(jump, field: "jumpAlias")

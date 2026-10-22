@@ -4,7 +4,8 @@ import Foundation
 /// Không đọc nội dung file key — chỉ giữ đường dẫn.
 public struct HostDraft: Equatable, Sendable {
     public enum Field: Hashable, Sendable {
-        case displayName, hostName, user, port, rdpUser, rdpDomain, rdpGateway, identityFile, password, jumpHost, alias,
+        case displayName, hostName, user, port, rdpUser, rdpDomain, rdpGateway, identityFile, identityAgent, password,
+            jumpHost, alias,
             general
     }
 
@@ -48,6 +49,9 @@ public struct HostDraft: Equatable, Sendable {
         set { authChoice = .from(newValue, hasSavedPassword: false) }
     }
     public var identityFile = ""
+    /// Agent (ADR-024): nil = theo mặc định trong Cài đặt; `.custom` dùng `identityAgentCustom`.
+    public var identityAgentPreset: IdentityAgentPreset?
+    public var identityAgentCustom = ""
     public var jumpHostID: UUID?
     public var project = ""
     public var environment: HostEnvironment = .other
@@ -94,6 +98,11 @@ public struct HostDraft: Equatable, Sendable {
             ? (hasSavedPassword ? .password : .prompt)
             : .from(host.authMethod, hasSavedPassword: hasSavedPassword)
         identityFile = host.identityFile ?? ""
+        if let agent = host.identityAgent {
+            let preset = IdentityAgentPreset.matching(agent)
+            identityAgentPreset = preset
+            if preset == .custom { identityAgentCustom = agent }
+        }
         jumpHostID = host.jumpHostID
         project = host.project
         environment = host.environment
@@ -139,6 +148,7 @@ public struct HostDraft: Equatable, Sendable {
             h.user = ""
             h.authMethod = authChoice == .password ? .interactive : .agent
             h.identityFile = nil
+            h.identityAgent = nil
             h.jumpHostID = nil
             h.remoteBookmarks = []
             return h
@@ -149,8 +159,18 @@ public struct HostDraft: Equatable, Sendable {
         h.port = Int(portText.trimmingCharacters(in: .whitespaces)) ?? 0
         h.authMethod = authChoice.method
         h.identityFile = authChoice == .keyFile ? identityFile : nil
+        h.identityAgent = identityAgentValue
         h.jumpHostID = jumpHostID
         return h
+    }
+
+    /// Giá trị `IdentityAgent` sẽ lưu cho host managed SSH; nil = theo mặc định.
+    public var identityAgentValue: String? {
+        switch identityAgentPreset {
+        case nil: return nil
+        case .custom?: return identityAgentCustom.trimmingCharacters(in: .whitespacesAndNewlines)
+        case let preset?: return preset.path
+        }
     }
 
     /// Lỗi theo trường (tiếng Việt). Rỗng = hợp lệ.
@@ -216,6 +236,11 @@ public struct HostDraft: Equatable, Sendable {
         case .identityFileRequired: return (.identityFile, "Hãy chọn file khoá riêng.")
         case .invalidIdentityFile:
             return (.identityFile, "Đường dẫn khoá phải tuyệt đối, không chứa '%' hay ký tự điều khiển.")
+        case .invalidIdentityAgent:
+            return (
+                .identityAgent,
+                "Đường dẫn agent phải bắt đầu bằng '/' hoặc '~/' (hoặc SSH_AUTH_SOCK), tối đa 1024 byte, không chứa '%', '$' hay ký tự điều khiển."
+            )
         case .invalidAlias: return (.alias, "Alias không hợp lệ.")
         case .invalidSSHConfigPath: return (.alias, "Đường dẫn file SSH config không hợp lệ.")
         case .containsNUL(let f): return (.general, "Trường \(f) chứa ký tự không hợp lệ.")

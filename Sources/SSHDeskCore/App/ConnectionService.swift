@@ -82,7 +82,9 @@ public actor ConnectionService {
 
     public func regenerateSSHConfig() async throws {
         try SSHConfigWriter.write(
-            to: appConfigURL, hosts: try await repository.sshSpecs(),
+            to: appConfigURL,
+            hosts: try await repository.sshSpecs(
+                defaultIdentityAgent: settings?.current.defaultIdentityAgent),
             userConfigPath: effectiveUserConfigPath)
     }
 

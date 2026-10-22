@@ -111,6 +111,7 @@ struct HostFormView: View {
                                 }
                             }
                         }
+                        if !isImported && !isWindows { agentField }
                         folderField
                         Picker("Môi trường", selection: $draft.environment) {
                             ForEach(HostEnvironment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -245,6 +246,35 @@ struct HostFormView: View {
             }
         }
         Text(authNote).font(.caption).foregroundStyle(.secondary)
+    }
+
+    /// Agent ngoài qua `IdentityAgent` (ADR-024). Chỉ host managed SSH.
+    @ViewBuilder
+    private var agentField: some View {
+        Picker("Agent", selection: $draft.identityAgentPreset) {
+            let def = model.settings.defaultIdentityAgent
+            Text(def.isEmpty ? "Theo mặc định (hệ thống)" : "Theo mặc định (\(def))")
+                .tag(IdentityAgentPreset?.none)
+            ForEach(IdentityAgentPreset.allCases, id: \.self) {
+                Text($0.title).tag(IdentityAgentPreset?.some($0))
+            }
+        }
+        if draft.identityAgentPreset == .custom {
+            field("Đường dẫn socket agent", .identityAgent) {
+                TextField(
+                    "Đường dẫn socket", text: $draft.identityAgentCustom,
+                    prompt: Text("~/.../agent.sock"))
+            }
+        } else if let e = errors[.identityAgent] {
+            Text(e).font(.caption).foregroundStyle(Theme.red)
+        }
+        let effective = IdentityAgentResolution.effective(
+            host: draft.identityAgentValue, settingsDefault: model.settings.defaultIdentityAgent)
+        if let effective {
+            ForEach(IdentityAgentPath.warnings(for: effective), id: \.self) { w in
+                Text(w.message).font(.caption).foregroundStyle(Theme.amber)
+            }
+        }
     }
 
     private var authNote: String {

@@ -760,7 +760,9 @@ final class AppModel {
         if next.monitorIntervalSeconds != old.monitorIntervalSeconds {
             monitor.applyDefaultInterval(next.monitorIntervalSeconds)
         }
-        if next.userSSHConfigPath != old.userSSHConfigPath {
+        if next.userSSHConfigPath != old.userSSHConfigPath
+            || next.defaultIdentityAgent != old.defaultIdentityAgent
+        {
             Task {
                 do { try await service?.regenerateSSHConfig() } catch {
                     show(error, title: "Không sinh lại được SSH config")

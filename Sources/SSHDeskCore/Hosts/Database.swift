@@ -172,6 +172,10 @@ public final class Database: @unchecked Sendable {
         Migration(statements: [
             "CREATE TABLE settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)"
         ]),
+        // v8: IdentityAgent theo host (ADR-024). NULL = theo mặc định trong Cài đặt.
+        Migration(statements: [
+            "ALTER TABLE hosts ADD COLUMN identity_agent TEXT"
+        ]),
     ]
 
     /// Phiên bản schema mà bản app này biết (hiện ở màn Cài đặt).

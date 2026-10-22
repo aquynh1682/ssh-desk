@@ -72,6 +72,8 @@ struct ExchangeHost: Codable, Equatable {
     var user: String
     var authMethod: String
     var identityFile: String?
+    /// Đường dẫn socket agent (không secret); file cũ thiếu trường này vẫn nhập được.
+    var identityAgent: String?
     var jumpHostId: String?
     var sshConfigPath: String?
     var sshConfigAlias: String?
@@ -86,7 +88,8 @@ struct ExchangeHost: Codable, Equatable {
     init(
         id: String, displayName: String, folder: String, environment: String, tags: [String],
         notes: String, isFavorite: Bool, kind: String, connectionMode: String, hostName: String,
-        port: Int, user: String, authMethod: String, identityFile: String?, jumpHostId: String?,
+        port: Int, user: String, authMethod: String, identityFile: String?, identityAgent: String? = nil,
+        jumpHostId: String?,
         sshConfigPath: String?, sshConfigAlias: String?, bookmarks: [Bookmark],
         defaultLocalDirectory: String, defaultRemoteDirectory: String, rdp: RDP?,
         needsReauth: Bool, portForwards: [Forward]
@@ -105,6 +108,7 @@ struct ExchangeHost: Codable, Equatable {
         self.user = user
         self.authMethod = authMethod
         self.identityFile = identityFile
+        self.identityAgent = identityAgent
         self.jumpHostId = jumpHostId
         self.sshConfigPath = sshConfigPath
         self.sshConfigAlias = sshConfigAlias
@@ -133,6 +137,7 @@ struct ExchangeHost: Codable, Equatable {
         user = try c.decodeIfPresent(String.self, forKey: .user) ?? ""
         authMethod = try c.decodeIfPresent(String.self, forKey: .authMethod) ?? "agent"
         identityFile = try c.decodeIfPresent(String.self, forKey: .identityFile)
+        identityAgent = try c.decodeIfPresent(String.self, forKey: .identityAgent)
         jumpHostId = try c.decodeIfPresent(String.self, forKey: .jumpHostId)
         sshConfigPath = try c.decodeIfPresent(String.self, forKey: .sshConfigPath)
         sshConfigAlias = try c.decodeIfPresent(String.self, forKey: .sshConfigAlias)
@@ -146,7 +151,7 @@ struct ExchangeHost: Codable, Equatable {
 
     private enum Key: String, CodingKey {
         case id, displayName, folder, environment, tags, notes, isFavorite, kind, connectionMode
-        case hostName, port, user, authMethod, identityFile, jumpHostId, sshConfigPath
+        case hostName, port, user, authMethod, identityFile, identityAgent, jumpHostId, sshConfigPath
         case sshConfigAlias, bookmarks, defaultLocalDirectory, defaultRemoteDirectory, rdp
         case needsReauth, portForwards
     }
@@ -218,6 +223,7 @@ public enum HostExchange {
                 isFavorite: h.isFavorite, kind: h.kind.rawValue,
                 connectionMode: h.connectionMode.rawValue, hostName: h.hostName, port: h.port,
                 user: h.user, authMethod: h.authMethod.rawValue, identityFile: h.identityFile,
+                identityAgent: h.identityAgent,
                 // Bastion ngoài tập xuất: bỏ liên kết (người gọi nên dùng exportSet để kèm bastion).
                 jumpHostId: h.jumpHostID.flatMap { ids.contains($0) ? $0.uuidString.lowercased() : nil },
                 sshConfigPath: h.sshConfigPath, sshConfigAlias: h.sshConfigAlias,
@@ -387,7 +393,8 @@ public enum HostExchange {
         let singleLine: [(String, String)] =
             [
                 ("tên", x.displayName), ("thư mục", x.folder), ("host", x.hostName), ("user", x.user),
-                ("đường dẫn key", x.identityFile ?? ""), ("alias", x.sshConfigAlias ?? ""),
+                ("đường dẫn key", x.identityFile ?? ""), ("agent", x.identityAgent ?? ""),
+                ("alias", x.sshConfigAlias ?? ""),
                 ("đường dẫn SSH config", x.sshConfigPath ?? ""),
                 ("thư mục local mặc định", x.defaultLocalDirectory),
                 ("thư mục remote mặc định", x.defaultRemoteDirectory),
@@ -417,7 +424,9 @@ public enum HostExchange {
             rdpScreenMode: screen, rdpMultiMonitor: x.rdp?.multiMonitor ?? false,
             rdpRedirectClipboard: x.rdp?.redirectClipboard ?? true,
             rdpAdminSession: x.rdp?.adminSession ?? false, hostName: x.hostName, port: x.port,
-            user: x.user, authMethod: auth, identityFile: x.identityFile, jumpHostID: nil,
+            user: x.user, authMethod: auth, identityFile: x.identityFile,
+            identityAgent: (kind == .ssh && mode == .managed && x.identityAgent?.isEmpty == false)
+                ? x.identityAgent : nil, jumpHostID: nil,
             sshConfigPath: x.sshConfigPath, sshConfigAlias: x.sshConfigAlias, credentialReference: nil,
             remoteBookmarks: x.bookmarks.map { RemoteBookmark(name: $0.name, path: $0.path) },
             defaultLocalDirectory: x.defaultLocalDirectory,

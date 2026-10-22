@@ -30,6 +30,8 @@ public struct AppSettings: Equatable, Sendable {
     // MARK: SSH config
     /// Đường dẫn config người dùng được `Include`; rỗng = `~/.ssh/config`.
     public var userSSHConfigPath = ""
+    /// Mặc định `IdentityAgent` cho host managed (ADR-024); rỗng = không ghi directive.
+    public var defaultIdentityAgent = ""
     // MARK: Bảo mật
     public var autofillEnabled = true
     public var clipboardClearSeconds = AppSettings.defaultClipboardSeconds
@@ -69,6 +71,7 @@ public struct AppSettings: Equatable, Sendable {
         static let transferConcurrency = "transfer.concurrency"
         static let transferHistoryLimit = "transfer.history_limit"
         static let userSSHConfigPath = "ssh.user_config_path"
+        static let defaultIdentityAgent = "ssh.default_identity_agent"
         static let autofillEnabled = "security.autofill_enabled"
         static let clipboardClearSeconds = "security.clipboard_clear_seconds"
         static let analystRetention = "analyst.retention"
@@ -104,6 +107,7 @@ public struct AppSettings: Equatable, Sendable {
         transferHistoryLimit = choice(
             Key.transferHistoryLimit, Self.transferHistoryChoices, Self.defaultTransferHistoryLimit)
         if let p = values[Key.userSSHConfigPath], Self.isPlausiblePath(p) { userSSHConfigPath = p }
+        if let a = values[Key.defaultIdentityAgent], IdentityAgentPath.isValid(a) { defaultIdentityAgent = a }
         autofillEnabled = bool(Key.autofillEnabled, true)
         clipboardClearSeconds = choice(
             Key.clipboardClearSeconds, Self.clipboardChoices, Self.defaultClipboardSeconds)
@@ -130,6 +134,7 @@ public struct AppSettings: Equatable, Sendable {
             Key.transferConcurrency: String(s.transferConcurrency),
             Key.transferHistoryLimit: String(s.transferHistoryLimit),
             Key.userSSHConfigPath: s.userSSHConfigPath,
+            Key.defaultIdentityAgent: s.defaultIdentityAgent,
             Key.autofillEnabled: s.autofillEnabled ? "1" : "0",
             Key.clipboardClearSeconds: String(s.clipboardClearSeconds),
             Key.analystRetention: String(s.analystRetention),
@@ -154,6 +159,7 @@ public struct AppSettings: Equatable, Sendable {
             Key.transferConcurrency: String(transferConcurrency),
             Key.transferHistoryLimit: String(transferHistoryLimit),
             Key.userSSHConfigPath: userSSHConfigPath,
+            Key.defaultIdentityAgent: defaultIdentityAgent,
             Key.autofillEnabled: autofillEnabled ? "1" : "0",
             Key.clipboardClearSeconds: String(clipboardClearSeconds),
             Key.analystRetention: String(analystRetention),

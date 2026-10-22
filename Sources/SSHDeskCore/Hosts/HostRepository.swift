@@ -27,7 +27,7 @@ public actor HostRepository {
         ssh_config_alias, credential_reference, bookmarks_json, default_local_directory, \
         default_remote_directory, created_at, updated_at, last_launch_requested_at, \
         kind, rdp_username, rdp_domain, rdp_gateway, rdp_screen_mode, rdp_multi_monitor, \
-        rdp_redirect_clipboard, rdp_admin_session
+        rdp_redirect_clipboard, rdp_admin_session, identity_agent
         """
 
     // MARK: - Đọc
@@ -250,7 +250,8 @@ public actor HostRepository {
     // MARK: - SSH config
 
     /// Spec cho các host managed (host imported dùng nguyên alias gốc, không sinh Host block).
-    public func sshSpecs() throws -> [SSHHostSpec] {
+    /// `defaultIdentityAgent`: mặc định trong Cài đặt (ADR-024); rỗng/nil = không ghi directive.
+    public func sshSpecs(defaultIdentityAgent: String? = nil) throws -> [SSHHostSpec] {
         let hosts = try all()
         let byID = Dictionary(uniqueKeysWithValues: hosts.map { ($0.id, $0) })
         return hosts.filter { $0.kind == .ssh && $0.connectionMode == .managed }.map { h in
@@ -260,7 +261,9 @@ public actor HostRepository {
                 alias: HostProfile.managedAlias(for: h.id), hostName: h.hostName, port: h.port,
                 user: h.user,
                 identityFile: h.authMethod == .keyFile ? h.identityFile : nil,
-                jumpAlias: jump)
+                jumpAlias: jump,
+                identityAgent: IdentityAgentResolution.effective(
+                    host: h.identityAgent, settingsDefault: defaultIdentityAgent))
         }
     }
 
@@ -306,6 +309,7 @@ public actor HostRepository {
             .text(h.kind.rawValue), .text(h.rdpUsername), opt(h.rdpDomain), opt(h.rdpGateway),
             .text(h.rdpScreenMode.rawValue), .int(h.rdpMultiMonitor ? 1 : 0),
             .int(h.rdpRedirectClipboard ? 1 : 0), .int(h.rdpAdminSession ? 1 : 0),
+            opt(h.identityAgent),
         ]
         if insert {
             let marks = Array(repeating: "?", count: values.count + 1).joined(separator: ", ")
@@ -344,7 +348,7 @@ public actor HostRepository {
             default: throw bad("cột \(i)")
             }
         }
-        guard row.count == 31, let id = UUID(uuidString: try text(0)),
+        guard row.count == 32, let id = UUID(uuidString: try text(0)),
             let env = HostEnvironment(rawValue: try text(3)),
             let mode = HostConnectionMode(rawValue: try text(7)),
             let auth = HostAuthMethod(rawValue: try text(11)),
@@ -364,7 +368,8 @@ public actor HostRepository {
             rdpScreenMode: screen, rdpMultiMonitor: try int(28) != 0,
             rdpRedirectClipboard: try int(29) != 0, rdpAdminSession: try int(30) != 0,
             hostName: try text(8), port: Int(try int(9)), user: try text(10), authMethod: auth,
-            identityFile: optText(12), jumpHostID: optText(13).flatMap(UUID.init(uuidString:)),
+            identityFile: optText(12), identityAgent: optText(31),
+            jumpHostID: optText(13).flatMap(UUID.init(uuidString:)),
             sshConfigPath: optText(14), sshConfigAlias: optText(15),
             credentialReference: optText(16), remoteBookmarks: marks,
             defaultLocalDirectory: try text(18), defaultRemoteDirectory: try text(19),

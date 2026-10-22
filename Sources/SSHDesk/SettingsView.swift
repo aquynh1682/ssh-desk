@@ -10,6 +10,10 @@ struct SettingsView: View {
     @FocusState private var configPathFocused: Bool
     @Local private var configPathText = ""
     @Local private var configPathError: String?
+    @Local private var agentCustomText = ""
+    @Local private var agentCustomMode = false
+    @Local private var agentError: String?
+    @FocusState private var agentFocused: Bool
     @Local private var confirmClearPasswords = false
     @Local private var savedPasswordCount = 0
 
@@ -34,7 +38,13 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .background(Theme.windowBackground)
-        .onAppear { configPathText = s.userSSHConfigPath }
+        .onAppear {
+            configPathText = s.userSSHConfigPath
+            agentCustomText = s.defaultIdentityAgent
+            agentCustomMode =
+                !s.defaultIdentityAgent.isEmpty
+                && IdentityAgentPreset.matching(s.defaultIdentityAgent) == .custom
+        }
         .confirmationDialog(
             "Xoá mọi mật khẩu đã lưu?", isPresented: $confirmClearPasswords, titleVisibility: .visible
         ) {
@@ -131,12 +141,97 @@ struct SettingsView: View {
                     ?? "Hiện không Include file nào (file chưa tồn tại)."
             )
             .font(.caption).foregroundStyle(Theme.textSecondary)
+            agentRow
             SettingsRow("Config do app sinh (chỉ xem)") {
                 Text(shortPath(model.paths.sshConfigURL.path)).lineLimit(1).truncationMode(.middle)
                     .foregroundStyle(Theme.textSecondary).frame(maxWidth: 260, alignment: .trailing)
                     .textSelection(.enabled)
                 Button("Mở trong Finder") { model.revealSSHConfigFolder() }
             }
+        }
+    }
+
+    /// Lựa chọn trong picker mặc định Agent: nil = không đặt; `.custom` = đang nhập đường dẫn.
+    private var agentSelection: Binding<IdentityAgentPreset?> {
+        Binding(
+            get: {
+                if agentCustomMode { return .custom }
+                let v = s.defaultIdentityAgent
+                return v.isEmpty ? nil : IdentityAgentPreset.matching(v)
+            },
+            set: { choice in
+                agentError = nil
+                switch choice {
+                case nil:
+                    agentCustomMode = false
+                    model.updateSettings { $0.defaultIdentityAgent = "" }
+                case .custom?:
+                    agentCustomMode = true
+                    agentCustomText =
+                        IdentityAgentPreset.matching(s.defaultIdentityAgent) == .custom ? s.defaultIdentityAgent : ""
+                    agentFocused = true
+                case let preset?:
+                    agentCustomMode = false
+                    model.updateSettings { $0.defaultIdentityAgent = preset.path ?? "" }
+                }
+            })
+    }
+
+    private var agentRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SettingsRow(
+                "Agent mặc định (IdentityAgent)",
+                hint:
+                    "Áp cho mọi máy managed chưa chọn agent riêng. Không đặt = không ghi directive (dùng agent hệ thống). Đổi thì config của app được sinh lại."
+            ) {
+                Picker("", selection: agentSelection) {
+                    Text("Không đặt (hệ thống)").tag(IdentityAgentPreset?.none)
+                    ForEach(IdentityAgentPreset.allCases.filter { $0 != .system }, id: \.self) {
+                        Text($0.title).tag(IdentityAgentPreset?.some($0))
+                    }
+                }
+                .labelsHidden().frame(width: 190)
+            }
+            if agentCustomMode {
+                TextField("~/.../agent.sock", text: $agentCustomText)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($agentFocused)
+                    .onSubmit { commitAgent() }
+                    .onChange(of: agentFocused) { _, focused in
+                        if !focused { commitAgent() }
+                    }
+                if agentError == nil
+                    && agentCustomText.trimmingCharacters(in: .whitespacesAndNewlines) != s.defaultIdentityAgent
+                {
+                    Text("Chưa lưu — nhập đường dẫn rồi nhấn Return hoặc rời khỏi ô.")
+                        .font(.caption).foregroundStyle(Theme.amber)
+                }
+            }
+            if let agentError {
+                Text(agentError).font(.caption).foregroundStyle(Theme.red)
+            }
+            if !s.defaultIdentityAgent.isEmpty {
+                ForEach(IdentityAgentPath.warnings(for: s.defaultIdentityAgent), id: \.self) { w in
+                    Text(w.message).font(.caption).foregroundStyle(Theme.amber)
+                }
+            }
+        }
+    }
+
+    /// Lưu đường dẫn tuỳ chỉnh khi Return; sai thì giữ giá trị cũ và báo lỗi.
+    private func commitAgent() {
+        let text = agentCustomText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty {
+            agentError = "Chưa lưu — nhập đường dẫn socket của agent."
+            return
+        }
+        do {
+            try IdentityAgentPath.validate(text)
+            agentError = nil
+            model.updateSettings { $0.defaultIdentityAgent = text }
+        } catch {
+            agentError =
+                "Đường dẫn phải bắt đầu bằng '/' hoặc '~/' (hoặc SSH_AUTH_SOCK), tối đa 1024 byte, không chứa '%', '$' hay ký tự điều khiển."
         }
     }
 

@@ -28,6 +28,7 @@ struct KeysView: View {
                     }
                 }
                 .cardStyle()
+                AgentKeysSection(keys: keys)
             }
             .padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 14)
             .frame(maxWidth: .infinity)
@@ -456,5 +457,58 @@ struct KeysDialogs: ViewModifier {
             } message: {
                 Text("Hồ sơ sẽ dùng file private key của cặp này (chỉ lưu đường dẫn). Có thể đổi lại trong form Sửa.")
             }
+    }
+}
+
+/// Mục "Key trong agent" (ADR-024): liệt kê public key bằng `ssh-add -L`; không đọc private key.
+private struct AgentKeysSection: View {
+    @Bindable var keys: KeysModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Key trong agent").font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Picker("Agent", selection: $keys.agentPreset) {
+                    Text("Mặc định").tag(IdentityAgentPreset?.none)
+                    ForEach(IdentityAgentPreset.allCases.filter { $0 != .custom }, id: \.self) {
+                        Text($0.title).tag(IdentityAgentPreset?.some($0))
+                    }
+                }
+                .labelsHidden().frame(width: 150)
+                Button {
+                    Task { await keys.refreshAgent() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(OutlineButtonStyle()).help("Liệt kê key trong agent")
+                .accessibilityLabel("Liệt kê key trong agent")
+                .disabled(keys.agentLoading)
+            }
+            switch keys.agentListing {
+            case nil:
+                Text("Nhấn làm mới để xem public key mà agent đang giữ (chỉ đọc).")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+            case .empty?:
+                Text("Agent chưa có key nào.").font(.caption).foregroundStyle(Theme.textSecondary)
+            case .unavailable(let reason)?:
+                Text(reason).font(.caption).foregroundStyle(Theme.amber)
+            case .keys(let list)?:
+                ForEach(list) { k in
+                    HStack(spacing: 10) {
+                        Text(k.type).font(.system(size: 12, design: .monospaced)).frame(width: 110, alignment: .leading)
+                        Text(k.fingerprint).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+                            .lineLimit(1).truncationMode(.middle)
+                        Text(k.comment).font(.system(size: 12)).foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+        .onChange(of: keys.agentPreset) { _, _ in Task { await keys.refreshAgent() } }
     }
 }

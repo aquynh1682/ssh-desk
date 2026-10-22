@@ -59,6 +59,8 @@ public enum HostValidationError: Error, Equatable {
     /// Trường RDP chứa ký tự điều khiển hoặc quá dài. `field` là tên trường.
     case invalidRDPField(field: String)
     case invalidRDPGateway(String)
+    /// `IdentityAgent` không hợp lệ (ADR-024).
+    case invalidIdentityAgent(IdentityAgentError)
 }
 
 /// Hồ sơ máy chủ. Không bao giờ chứa password/passphrase — chỉ `credentialReference` trỏ vào Keychain.
@@ -95,6 +97,8 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
     public var user: String
     public var authMethod: HostAuthMethod
     public var identityFile: String?
+    /// Đường dẫn socket agent (ADR-024). nil = theo mặc định trong Cài đặt. Không phải secret.
+    public var identityAgent: String?
     public var jumpHostID: UUID?
 
     // Imported
@@ -132,6 +136,7 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         user: String = "",
         authMethod: HostAuthMethod = .agent,
         identityFile: String? = nil,
+        identityAgent: String? = nil,
         jumpHostID: UUID? = nil,
         sshConfigPath: String? = nil,
         sshConfigAlias: String? = nil,
@@ -164,6 +169,7 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         self.user = user
         self.authMethod = authMethod
         self.identityFile = identityFile
+        self.identityAgent = identityAgent
         self.jumpHostID = jumpHostID
         self.sshConfigPath = sshConfigPath
         self.sshConfigAlias = sshConfigAlias
@@ -231,6 +237,11 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         try noNUL(defaultLocalDirectory, "defaultLocalDirectory")
         try noNUL(defaultRemoteDirectory, "defaultRemoteDirectory")
         if let credentialReference { try noNUL(credentialReference, "credentialReference") }
+        if let identityAgent {
+            do { try IdentityAgentPath.validate(identityAgent) } catch let e as IdentityAgentError {
+                throw HostValidationError.invalidIdentityAgent(e)
+            }
+        }
 
         if kind == .windowsRDP {
             try validateRDP()

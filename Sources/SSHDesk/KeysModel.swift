@@ -52,6 +52,11 @@ final class KeysModel {
     var confirmProdInstall: (key: SSHKeyInfo, host: HostProfile)?
     var adoptionOffer: KeyAdoptionOffer?
 
+    /// Agent đang xem ở mục "Key trong agent": nil = mặc định trong Cài đặt (hoặc hệ thống).
+    var agentPreset: IdentityAgentPreset?
+    var agentListing: AgentKeyListing?
+    var agentLoading = false
+
     private var session: KeyTaskSession?
 
     init(app: AppModel, directory: URL = SSHKeyInventory.defaultDirectory) {
@@ -66,6 +71,22 @@ final class KeysModel {
         keys = await inventory.list()
         loaded = true
         if let s = selectionName, !keys.contains(where: { $0.name == s }) { selectionName = nil }
+    }
+
+    // MARK: - Key trong agent (ADR-024)
+
+    /// Giá trị agent đang xem (đường dẫn/`SSH_AUTH_SOCK`); nil = agent hệ thống.
+    var agentValue: String? {
+        IdentityAgentResolution.effective(
+            host: agentPreset?.path, settingsDefault: app.settings.defaultIdentityAgent)
+    }
+
+    /// Chạy `ssh-add -L` (chỉ đọc public key). Không thêm/xoá key.
+    func refreshAgent() async {
+        agentLoading = true
+        let value = agentValue
+        agentListing = await AgentKeyLister.list(agent: value)
+        agentLoading = false
     }
 
     // MARK: - Public key / Finder
