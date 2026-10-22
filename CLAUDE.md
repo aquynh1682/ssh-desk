@@ -12,6 +12,8 @@ App macOS native (cá nhân) quản lý hồ sơ máy chủ, mở SSH trong Warp
 - **Agent chính (Opus) = PM:** chốt quyết định, chia task, giao việc, review diff, approve. Không tự viết code tính năng.
 - **`coder` (Sonnet):** viết code + test theo task.
 - **`researcher` (Haiku):** đọc file, tra tài liệu, kiểm chứng hành vi công cụ bằng lệnh chỉ đọc.
+- **`qa-reviewer` (Sonnet):** kiểm tra phần coder vừa làm theo checklist bảo mật/ADR, chỉ đọc.
+- **`doc-writer` (Sonnet):** viết tài liệu `.md`, không đụng code, chạy song song với coder được.
 - Quyết định mới hoặc đổi quyết định → PM ghi vào `docs/architecture.md` trước, rồi mới giao code.
 - Task chỉ được tính xong khi PM đã review và `make check` xanh.
 - Agent chạy với `isolation: worktree` được tạo từ **`main`**, không phải nhánh hiện tại → chỉ dùng worktree khi việc không đụng file đã đổi trên nhánh chưa merge, hoặc merge nhánh vào `main` trước.
@@ -40,3 +42,12 @@ App macOS native (cá nhân) quản lý hồ sơ máy chủ, mở SSH trong Warp
 - Không sửa `~/.ssh/config` hay Tab Config của người dùng; chỉ ghi file app sở hữu (`sshdesk_*`).
 - Không kết nối server thật, không `StrictHostKeyChecking=no`, không commit/push nếu chưa được yêu cầu.
 - Không tự thêm dependency bên ngoài; không đổi quyết định trong `docs/architecture.md` mà không qua PM.
+
+## Harness: giao việc SSH Desk
+**Mục tiêu:** làm tiếp các bước trong plan.md qua đội agent mà không đè nhau.
+**Khi nào dùng:** làm tiếp tính năng, sửa theo phản hồi, chạy lại QA, viết hoặc cập nhật tài liệu → dùng skill `ssh-desk-delivery`. Câu hỏi đơn giản thì trả lời trực tiếp.
+
+| Ngày | Thay đổi | Đối tượng | Lý do |
+| --- | --- | --- | --- |
+| 2026-10-22 | Thêm `qa-reviewer`, `doc-writer`, skill `ssh-desk-delivery` | agents, skills | Người dùng yêu cầu thêm agent để làm nốt việc còn lại |
+
