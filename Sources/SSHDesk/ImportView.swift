@@ -14,9 +14,10 @@ struct ImportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Import từ SSH config").font(.title2.bold())
+            Text("Import từ SSH config").font(.system(size: 20, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
             Text("Chỉ đọc \(configURL.path); không sửa file và không chạy lệnh nào trong đó.")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.textSecondary)
             if let result {
                 content(result)
             } else {
@@ -24,20 +25,24 @@ struct ImportView: View {
                 HStack {
                     Spacer()
                     Button(scanning ? "Đang quét…" : "Quét ~/.ssh/config") { scan() }
-                        .buttonStyle(.borderedProminent).disabled(scanning)
+                        .buttonStyle(ProminentButtonStyle()).disabled(scanning)
                     Spacer()
                 }
                 Spacer()
             }
-            Divider()
+            Divider().overlay(Theme.divider)
             HStack {
                 Spacer()
-                Button("Đóng") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Đóng") { dismiss() }
+                    .buttonStyle(OutlineButtonStyle()).keyboardShortcut(.cancelAction)
                 Button("Import \(selectedCount) mục") { Task { await doImport() } }
+                    .buttonStyle(ProminentButtonStyle())
                     .keyboardShortcut(.defaultAction).disabled(selectedCount == 0)
+                    .opacity(selectedCount == 0 ? 0.5 : 1)
             }
         }
         .padding(16)
+        .background(Theme.windowBackground)
         .frame(width: 640, height: 560)
     }
 
@@ -47,7 +52,9 @@ struct ImportView: View {
     private func content(_ r: SSHConfigScanResult) -> some View {
         List {
             Section {
-                if r.candidates.isEmpty { Text("Không tìm thấy alias cụ thể nào.").foregroundStyle(.secondary) }
+                if r.candidates.isEmpty {
+                    Text("Không tìm thấy alias cụ thể nào.").foregroundStyle(Theme.textSecondary)
+                }
                 ForEach(r.candidates, id: \.alias) { c in candidateRow(c) }
             } header: {
                 Text("Giá trị đọc trực tiếp từ khối Host, chưa phải cấu hình hiệu lực")
@@ -68,12 +75,15 @@ struct ImportView: View {
                             Image(systemName: "exclamationmark.triangle")
                                 .foregroundStyle(
                                     w.kind == .proxyCommand || w.kind == .matchExec
-                                        || w.kind == .matchNotEvaluated ? .orange : .secondary)
+                                        || w.kind == .matchNotEvaluated ? Theme.amber : Theme.textSecondary)
                         }
                     }
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardCorner))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cardCorner).strokeBorder(Theme.cardStroke))
     }
 
     private func candidateRow(_ c: ImportCandidate) -> some View {
@@ -89,16 +99,16 @@ struct ImportView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(c.alias).font(.body.weight(.medium))
-                    if done { Text("đã import").font(.caption).foregroundStyle(.secondary) }
+                    if done { Text("đã import").font(.caption).foregroundStyle(Theme.textSecondary) }
                 }
-                Text(raw(c)).font(.caption).foregroundStyle(.secondary)
+                Text(raw(c)).font(.caption).foregroundStyle(Theme.textSecondary)
                 if c.hasProxyCommand {
                     Text("Có ProxyCommand — app không chạy hay đánh giá lệnh này.")
-                        .font(.caption).foregroundStyle(.orange)
+                        .font(.caption).foregroundStyle(Theme.amber)
                 }
                 if c.hasMatchOrComplexity {
                     Text("Nằm trong/gần Match, Include hoặc pattern — cấu hình hiệu lực có thể khác.")
-                        .font(.caption).foregroundStyle(.orange)
+                        .font(.caption).foregroundStyle(Theme.amber)
                 }
             }
         }

@@ -10,6 +10,8 @@ public enum ConnectionServiceError: Error, Equatable {
     case notSSHHost
     /// Thao tác chỉ dành cho máy Windows.
     case notWindowsHost
+    /// Không có kho Keychain (không thể xoá mật khẩu thật).
+    case credentialsUnavailable
 }
 
 /// Kết quả import: hồ sơ mới tạo và alias bị bỏ qua vì đã import từ cùng file.
@@ -23,7 +25,17 @@ public enum PasswordCopyOutcome: Sendable, Equatable {
     /// Không có mật khẩu lưu (hoặc không áp dụng): không làm gì.
     case none
     case copied
+    /// Cài đặt "tự điền mật khẩu đã lưu" đang tắt: không copy (ADR-021).
+    case disabled
     case failed(String)
+}
+
+/// Kết quả "Xoá mọi mật khẩu đã lưu" (ADR-021). Không chứa mật khẩu.
+public struct PasswordPurgeResult: Sendable, Equatable {
+    /// Số host đã gỡ tham chiếu.
+    public var removed: Int
+    /// Số host không xoá được (Keychain/DB lỗi); tham chiếu của các host này được giữ nguyên để thử lại.
+    public var failed: Int
 }
 
 public struct WindowsOpenReport: Sendable, Equatable {
@@ -36,6 +48,7 @@ public actor ConnectionService {
     public let repository: HostRepository
     public let appConfigURL: URL
     private let userConfigPath: String?
+    private let settings: SettingsStore?
     private let launcher: WarpLauncher
     private let rdpLauncher: WindowsAppLauncher
     private let credentials: (any CredentialStore)?
@@ -44,13 +57,16 @@ public actor ConnectionService {
     private let now: @Sendable () -> Date
 
     /// `userConfigPath`: nil = không `Include`. Chỉ truyền đường dẫn file đang tồn tại
-    /// (xem `AppPaths.existingUserConfigPath()`).
+    /// (xem `AppPaths.existingUserConfigPath()`). Khi có `settings`, đường dẫn Include lấy từ cài đặt
+    /// (mỗi lần sinh config) và `userConfigPath` bị bỏ qua.
     public init(
         repository: HostRepository, appConfigURL: URL, userConfigPath: String?,
         launcher: WarpLauncher, rdpLauncher: WindowsAppLauncher = WindowsAppLauncher(),
         credentials: (any CredentialStore)? = nil, secretClipboard: SecretClipboard? = nil,
-        askpassHelper: URL? = nil, now: @escaping @Sendable () -> Date = { Date() }
+        askpassHelper: URL? = nil, settings: SettingsStore? = nil,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
+        self.settings = settings
         self.credentials = credentials
         self.secretClipboard = secretClipboard
         self.askpassHelper = askpassHelper
@@ -67,7 +83,13 @@ public actor ConnectionService {
     public func regenerateSSHConfig() async throws {
         try SSHConfigWriter.write(
             to: appConfigURL, hosts: try await repository.sshSpecs(),
-            userConfigPath: userConfigPath)
+            userConfigPath: effectiveUserConfigPath)
+    }
+
+    /// Đường dẫn config người dùng được `Include` ngay lúc này.
+    private var effectiveUserConfigPath: String? {
+        if let settings { return settings.current.effectiveUserConfigPath() }
+        return userConfigPath
     }
 
     public func sshArguments(for host: HostProfile) throws -> [String] {
@@ -87,6 +109,10 @@ public actor ConnectionService {
         let plain = try copyableSSHCommand(for: host)
         guard let ref = host.credentialReference, let credentials, credentials.exists(ref: ref) else {
             return (plain, nil)
+        }
+        // Tắt tự điền: không đặt SSHDESK_HOST_REF/SSH_ASKPASS, ssh hỏi mật khẩu ngay trong Warp.
+        if let settings, !settings.current.autofillEnabled {
+            return (plain, "Đang tắt tự điền mật khẩu (Cài đặt) — nhập mật khẩu trong Warp.")
         }
         guard let helper = askpassHelper else {
             return (plain, "Không tìm thấy helper đăng nhập tự động — nhập mật khẩu trong Warp.")
@@ -154,6 +180,33 @@ public actor ConnectionService {
         return try await savePassword(hostID: hostID, password: password)
     }
 
+    /// Số host đang có tham chiếu mật khẩu.
+    public func savedPasswordCount() async throws -> Int {
+        try await repository.all().filter { ($0.credentialReference ?? "").isEmpty == false }.count
+    }
+
+    /// Xoá mọi item Keychain theo tham chiếu của từng host rồi gỡ tham chiếu khỏi hồ sơ (ADR-021).
+    /// Chỉ chạm item của app (theo `credentialReference` từng host), không quét Keychain.
+    public func clearAllPasswords() async throws -> PasswordPurgeResult {
+        var result = PasswordPurgeResult(removed: 0, failed: 0)
+        let hosts = try await repository.all().filter { ($0.credentialReference ?? "").isEmpty == false }
+        // Không có kho Keychain thì không được gỡ tham chiếu (sẽ mồ côi item thật).
+        if !hosts.isEmpty, credentials == nil { throw ConnectionServiceError.credentialsUnavailable }
+        for host in hosts {
+            guard let ref = host.credentialReference, let credentials else { continue }
+            do {
+                try credentials.delete(ref: ref)
+                var updated = host
+                updated.credentialReference = nil
+                _ = try await repository.update(updated)
+                result.removed += 1
+            } catch {
+                result.failed += 1
+            }
+        }
+        return result
+    }
+
     private func alias(of host: HostProfile) throws -> String {
         guard let alias = repository.sshAlias(for: host) else {
             throw ConnectionServiceError.missingAlias
@@ -201,7 +254,8 @@ public actor ConnectionService {
 
     // MARK: - Warp
 
-    public func openInWarp(_ host: HostProfile, newWindow: Bool = false) async -> LaunchResult {
+    /// `newWindow`: nil = theo cài đặt "Warp mở Tab mới / Cửa sổ mới".
+    public func openInWarp(_ host: HostProfile, newWindow: Bool? = nil) async -> LaunchResult {
         await openInWarpReport(host, newWindow: newWindow).result
     }
 
@@ -211,7 +265,8 @@ public actor ConnectionService {
         public var notice: String?
     }
 
-    public func openInWarpReport(_ host: HostProfile, newWindow: Bool = false) async -> WarpOpenReport {
+    public func openInWarpReport(_ host: HostProfile, newWindow: Bool? = nil) async -> WarpOpenReport {
+        let newWindow = newWindow ?? settings?.current.warpOpenMode.opensNewWindow ?? false
         var notice: String?
         guard host.kind == .ssh else {
             return WarpOpenReport(result: .failed("Máy Windows không mở bằng Warp."), notice: nil)
@@ -258,13 +313,16 @@ public actor ConnectionService {
     public func copyStoredWindowsPassword(_ host: HostProfile) async -> PasswordCopyOutcome {
         guard host.kind == .windowsRDP else { return .failed("Đây không phải máy Windows.") }
         guard let credentials, let secretClipboard else { return .none }
+        let current = settings?.current
+        if let current, !current.autofillEnabled { return .disabled }
         let ref = (try? await repository.host(id: host.id))?.credentialReference ?? host.credentialReference
         guard let ref else { return .none }
         guard let password = credentials.read(ref: ref) else {
             return credentials.exists(ref: ref)
                 ? .failed("Không đọc được mật khẩu từ Keychain.") : .none
         }
-        secretClipboard.copy(password, clearAfter: 30)
+        secretClipboard.copy(
+            password, clearAfter: TimeInterval(current?.clipboardClearSeconds ?? 30))
         return .copied
     }
 

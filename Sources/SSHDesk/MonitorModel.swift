@@ -101,7 +101,7 @@ final class MonitorModel {
         states = [:]
         isRunning = true
         let connector = SessionConnector(
-            configPath: app.paths.sshConfigURL.path, credentials: app.credentials,
+            configPath: app.paths.sshConfigURL.path, credentials: app.autofillCredentials,
             helper: ControllingTTYHelper.defaultURL())
         let provider = PooledMonitorSessions(pool: app.sessionPool, connector: connector) {
             [weak self] host, kind, respond in
@@ -147,6 +147,9 @@ final class MonitorModel {
         coordinator = nil
         Task { await coord?.stop() }
     }
+
+    /// Chu kỳ mặc định từ Cài đặt (ADR-021); đang chạy thì áp dụng luôn.
+    func applyDefaultInterval(_ seconds: Int) { setInterval(seconds) }
 
     func setInterval(_ seconds: Int) {
         guard Self.intervals.contains(seconds) else { return }

@@ -96,12 +96,15 @@ public actor AnalystRunRepository {
     public static let defaultRetention = 50
 
     private let db: Database
-    private let retention: Int
+    private var retention: Int
 
     public init(database: Database, retention: Int = AnalystRunRepository.defaultRetention) {
         self.db = database
         self.retention = max(1, retention)
     }
+
+    /// Đổi số lần chạy giữ mỗi thư mục (10–200 ở Cài đặt); áp dụng từ lần lưu kế tiếp.
+    public func setRetention(_ n: Int) { retention = max(1, n) }
 
     // MARK: - Ghi
 

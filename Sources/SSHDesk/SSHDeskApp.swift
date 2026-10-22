@@ -18,29 +18,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppModel.shared.secretClipboard.clearNowIfOwned()
     }
 
-    /// Còn job chạy thì đóng cửa sổ KHÔNG thoát app (job tiếp tục trong lúc app còn mở; mở lại
-    /// bằng Dock). Hết job thì đóng cửa sổ cuối = thoát như trước.
-    /// Thứ tự thoát: hỏi về job đang chạy (hộp thoại hiện có) → huỷ job → đóng mọi master của tab
-    /// duyệt file (`ssh -O exit`) → thoát. Tab không được mở lại ở lần chạy sau.
+    /// Chính sách đóng cửa sổ (ADR-021): "Thoát app" -> đóng cửa sổ cuối đi qua đường thoát có xác nhận;
+    /// "Giữ chạy nền" -> app sống tiếp, mở lại cửa sổ bằng Dock.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        WindowCloseDecision.quitsOnLastWindowClose(AppModel.shared.settings)
+    }
+
+    /// Bấm Dock khi không còn cửa sổ: để SwiftUI dựng lại cửa sổ chính (job nền vẫn chạy).
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        true
+    }
+
+    /// Thoát (⌘Q hoặc đóng cửa sổ cuối khi chính sách là Thoát), ADR-022:
+    /// còn job truyền/tunnel/Monitor/Analyst/tác vụ Keys -> hộp xác nhận liệt kê từng loại. Đồng ý -> huỷ job
+    /// (job chờ thành "Bị gián đoạn"), dừng tunnel, dừng Analyst/Monitor, đóng mọi master (`ssh -O exit`),
+    /// xoá clipboard password rồi thoát. Tab duyệt file rảnh đóng im lặng.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let model = AppModel.shared
-        guard model.hasActiveTransfers || model.hasOpenSessions || model.keys.isBusy else {
+        let activity = model.quitActivity
+        guard activity.needsConfirmation || model.hasOpenSessions else {
             return .terminateNow
         }
         Task { @MainActor in
-            if model.hasActiveTransfers {
+            if activity.needsConfirmation {
                 let alert = NSAlert()
-                alert.messageText = "Đang có tác vụ truyền file"
-                alert.informativeText =
-                    "Thoát bây giờ sẽ huỷ các tác vụ đang chạy; app không truyền tiếp sau khi thoát. Tác vụ đang chờ sẽ hiện là “Bị gián đoạn” ở lần mở sau."
-                alert.addButton(withTitle: "Tiếp tục chạy")
-                alert.addButton(withTitle: "Huỷ tác vụ và thoát")
+                alert.messageText = QuitActivity.title
+                alert.informativeText = activity.message
+                alert.addButton(withTitle: QuitActivity.cancelButton)
+                alert.addButton(withTitle: QuitActivity.confirmButton)
                 if alert.runModal() == .alertFirstButtonReturn {
                     sender.reply(toApplicationShouldTerminate: false)
                     return
                 }
-                await model.shutdownTransfers(cancelRunning: true)
             }
+            model.secretClipboard.clearNowIfOwned()
+            await model.shutdownTransfers(cancelRunning: true)
             await model.keys.shutdown()
             await model.closeAllSessions()
             sender.reply(toApplicationShouldTerminate: true)
@@ -83,7 +95,51 @@ struct SSHDeskApp: App {
                 Button("Nhập danh sách máy chủ…") { model.beginImportFile() }
                     .disabled(!model.isReady)
             }
+            // Thao tác trên máy chủ đang chọn (ADR-022). Xoá dùng ⌘⌫ (không dùng ⌫ trần để khỏi tranh phím
+            // với ô nhập); trong bảng máy chủ phím ⌫ cũng hỏi xoá.
+            CommandMenu("Máy chủ") {
+                Button("Mở (Warp / Windows App)") { model.openSelected() }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!model.hasSelectedHost)
+                Button("Sửa…") { model.editSelected() }
+                    .keyboardShortcut("e", modifiers: .command)
+                    .disabled(!model.hasSelectedHost)
+                Button("Nhân bản…") { model.duplicateSelected() }
+                    .keyboardShortcut("d", modifiers: .command)
+                    .disabled(!model.hasSelectedHost)
+                Divider()
+                Button("Xoá…") { model.deleteSelected() }
+                    .keyboardShortcut(.delete, modifiers: .command)
+                    .disabled(!model.hasSelectedHost)
+            }
+            CommandGroup(after: .sidebar) {
+                ForEach(Array(AppModel.shortcutSections.enumerated()), id: \.offset) { index, entry in
+                    Button(entry.title) { model.sidebar = entry.item }
+                        .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                        .disabled(!model.isReady)
+                }
+            }
         }
+
+        Settings {
+            SettingsWindowContent(model: model)
+        }
+    }
+}
+
+/// Nội dung cửa sổ Cài đặt (⌘,). Dữ liệu chưa sẵn sàng thì chờ.
+private struct SettingsWindowContent: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        Group {
+            if model.isReady {
+                SettingsView(model: model)
+            } else {
+                ProgressView("Đang mở dữ liệu…")
+            }
+        }
+        .frame(width: 680, height: 620)
     }
 }
 

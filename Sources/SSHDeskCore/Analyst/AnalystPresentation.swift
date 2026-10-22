@@ -126,10 +126,11 @@ public enum AnalystPresentation {
         }
     }
 
-    public static func timeText(_ outcome: ProbeOutcome) -> String {
+    /// `timeout`: timeout probe đang cài đặt (ADR-021); chỉ dùng để hiện khi probe hết giờ.
+    public static func timeText(_ outcome: ProbeOutcome, timeout: ProbeTimeout = .default) -> String {
         switch outcome {
         case .passed(let ms): return millisText(ms)
-        case .failed(.timeout): return "3.0 s"
+        case .failed(.timeout): return "\(timeout.seconds).0 s"
         default: return "—"
         }
     }
@@ -159,7 +160,9 @@ public enum AnalystPresentation {
         return s
     }
 
-    public static func rows(_ run: StoredAnalystRun) -> [AnalystResultRow] {
+    public static func rows(_ run: StoredAnalystRun, timeout: ProbeTimeout = .default)
+        -> [AnalystResultRow]
+    {
         run.topology.flows.map { tf in
             let r = run.results.first { $0.flow == tf.flow }
             let name = { (id: UUID) in run.topology.node(id)?.displayName ?? "?" }
@@ -168,7 +171,7 @@ public enum AnalystPresentation {
                 source: name(tf.flow.source), destination: name(tf.flow.destination),
                 port: "\(tf.flow.port)/TCP",
                 resultText: r.map { resultText($0.outcome) } ?? "Chưa thử",
-                style: style(r), timeText: r.map { timeText($0.outcome) } ?? "—",
+                style: style(r), timeText: r.map { timeText($0.outcome, timeout: timeout) } ?? "—",
                 isFailure: r?.outcome.isFailed ?? false)
         }
     }
@@ -184,7 +187,9 @@ public enum AnalystPresentation {
         }
     }
 
-    public static func sourceCheck(_ result: FlowTestResult?) -> AnalystCheckLine {
+    public static func sourceCheck(_ result: FlowTestResult?, timeout: ProbeTimeout = .default)
+        -> AnalystCheckLine
+    {
         let title = "KIỂM TRA TỪ NGUỒN"
         guard let result else {
             return AnalystCheckLine(title: title, headline: "Chưa thử", detail: nil, tone: .neutral)
@@ -196,7 +201,7 @@ public enum AnalystPresentation {
                 tone: .good)
         case .failed(.timeout):
             return AnalystCheckLine(
-                title: title, headline: "Hết thời gian chờ", detail: "Quá 3.0 s", tone: .bad)
+                title: title, headline: "Hết thời gian chờ", detail: "Quá thời gian chờ", tone: .bad)
         case .failed(.refused):
             return AnalystCheckLine(
                 title: title, headline: "Kết nối bị từ chối", detail: "Cổng đóng hoặc bị chặn", tone: .bad)

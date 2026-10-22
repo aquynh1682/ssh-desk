@@ -22,7 +22,7 @@ final class TunnelsModel {
     init(app: AppModel) {
         self.app = app
         manager = TunnelManager(
-            configPath: app.paths.sshConfigURL.path, credentials: app.credentials,
+            configPath: app.paths.sshConfigURL.path, credentials: app.autofillCredentials,
             helper: ControllingTTYHelper.defaultURL())
         let events = manager.events
         eventsTask = Task { [weak self] in

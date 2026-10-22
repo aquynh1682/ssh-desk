@@ -8,6 +8,7 @@ struct RootView: View {
         switch model.phase {
         case .loading:
             ProgressView("Đang mở dữ liệu…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.windowBackground)
         case .failed(let failure):
             DatabaseErrorView(failure: failure) { model.revealDataFolder() }
         case .ready:
@@ -23,18 +24,22 @@ struct DatabaseErrorView: View {
     var body: some View {
         ContentUnavailableView {
             Label("Không mở được dữ liệu SSH Desk", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.red)
         } description: {
             VStack(spacing: 8) {
-                Text(failure.message)
+                Text(failure.message).foregroundStyle(Theme.textPrimary)
                 Text(failure.path).font(.callout.monospaced()).textSelection(.enabled)
+                    .foregroundStyle(Theme.textPrimary)
                 Text(
                     "File được giữ nguyên, app không tạo dữ liệu mới đè lên. Hãy sao lưu hoặc xử lý file rồi mở lại app."
                 )
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.textSecondary)
             }
         } actions: {
-            Button("Mở thư mục trong Finder", action: reveal)
+            Button("Mở thư mục trong Finder", action: reveal).buttonStyle(ProminentButtonStyle())
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.windowBackground)
     }
 }
 
@@ -186,6 +191,8 @@ struct MainView: View {
                 }
             } else if model.sidebar == .keys {
                 Text("\(model.keys.keys.count) key")
+            } else if model.sidebar == .settings {
+                Text("Cài đặt")
             } else if model.sidebar == .monitor {
                 Text(
                     model.monitor.folder.map { "\(model.monitor.hosts.count) máy chủ trong “\($0)”" }
@@ -233,6 +240,9 @@ struct MainView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.sidebar == .monitor {
             MonitorView(model: model)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if model.sidebar == .settings {
+            SettingsView(model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             FileTransferView(model: model)

@@ -10,7 +10,8 @@ public actor TransferRepository {
     public static let defaultRetention = 500
 
     private let db: Database
-    private let retention: Int
+    /// 0 = không giới hạn.
+    private var retention: Int
     private let now: @Sendable () -> Date
 
     public init(
@@ -18,9 +19,20 @@ public actor TransferRepository {
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.db = database
-        self.retention = max(1, retention)
+        self.retention = TransferRepository.normalize(retention)
         self.now = now
     }
+
+    private static func normalize(_ n: Int) -> Int { n <= 0 ? Int(Int32.max) : n }
+
+    /// Đổi số bản ghi lịch sử giữ lại (0 = không giới hạn) và cắt bớt ngay. Job chưa kết thúc không bao giờ bị xoá.
+    public func setRetention(_ n: Int) {
+        retention = Self.normalize(n)
+        try? db.transaction { try prune() }
+    }
+
+    /// Số bản ghi hiện giữ.
+    public var currentRetention: Int { retention }
 
     private static let columns = """
         id, host_id, host_display_name, target_snapshot, ssh_alias_snapshot, config_path_snapshot, \
@@ -41,10 +53,11 @@ public actor TransferRepository {
     }
 
     /// Mới nhất trước.
-    public func history(limit: Int = TransferRepository.defaultRetention) throws -> [TransferJob] {
+    /// `limit` nil = toàn bộ (đã bị `prune` chặn trên theo cài đặt giữ lịch sử).
+    public func history(limit: Int? = nil) throws -> [TransferJob] {
         try db.query(
             "SELECT \(Self.columns) FROM transfer_jobs ORDER BY seq DESC LIMIT ?",
-            [.int(Int64(max(0, limit)))]
+            [.int(Int64(max(0, limit ?? Int(Int32.max))))]
         ).map(Self.decode)
     }
 

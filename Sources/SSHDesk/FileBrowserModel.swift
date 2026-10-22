@@ -23,7 +23,7 @@ extension UTType {
 final class FileBrowserModel {
     weak var app: AppModel?
     let credentials: any CredentialStore
-    let local = LocalPaneModel()
+    let local: LocalPaneModel
     private(set) var tabs: [BrowserTab] = []
     var selectedTabID: UUID?
     var dialog: BrowserDialog?
@@ -35,6 +35,7 @@ final class FileBrowserModel {
     init(app: AppModel, credentials: any CredentialStore) {
         self.app = app
         self.credentials = credentials
+        local = LocalPaneModel(startDirectory: app.settings.resolvedLocalDirectory())
         // Bắt đầu một thao tác chuột mới thì xoá nguồn kéo cũ (kéo bị huỷ giữa chừng không có callback).
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             Task { @MainActor in self?.dragOrigin = nil }

@@ -85,6 +85,7 @@ import Testing
             args == [
                 "-F", "/Users/me/Library/Application Support/SSHDesk/ssh/config", "-N",
                 "-o", "ExitOnForwardFailure=yes", "-o", "ControlMaster=no", "-o", "ControlPath=none",
+                "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
                 "-L", "127.0.0.1:15432:db.internal:5432", "--", "sshdesk-abc",
             ])
     }

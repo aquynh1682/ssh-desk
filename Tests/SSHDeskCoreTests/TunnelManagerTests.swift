@@ -112,6 +112,7 @@ private func alive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 }
             s.read("args").split(separator: "\n").map(String.init) == [
                 "-F", "/tmp/sshdesk-test-config", "-N", "-o", "ExitOnForwardFailure=yes",
                 "-o", "ControlMaster=no", "-o", "ControlPath=none",
+                "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
                 "-L", "127.0.0.1:15432:db.internal:5432", "--", h.sshAlias!,
             ])
         #expect(await m.activeCount == 1)

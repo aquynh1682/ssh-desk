@@ -39,7 +39,7 @@ struct SidebarView: View {
             Divider().overlay(Theme.divider).padding(.horizontal, 10)
             VStack(alignment: .leading, spacing: 2) {
                 row("SSH Keys", "key", item: .keys)
-                comingSoon("Cài đặt", "gearshape")
+                row("Cài đặt", "gearshape", item: .settings)
             }
             .padding(10)
         }
@@ -239,20 +239,6 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private func comingSoon(_ title: String, _ symbol: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol).frame(width: 20)
-            Text(title)
-            Spacer()
-            Text("Sắp có").font(.caption)
-        }
-        .font(.system(size: 13.5))
-        .foregroundStyle(Theme.textTertiary)
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Chưa khả dụng")
     }
 }
 

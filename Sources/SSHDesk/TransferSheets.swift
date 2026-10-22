@@ -131,7 +131,7 @@ struct DownloadSheet: View {
             ready = true
             form.localDirectory =
                 host.defaultLocalDirectory.isEmpty
-                ? NSHomeDirectory() + "/Downloads" : host.defaultLocalDirectory
+                ? model.settings.resolvedLocalDirectory() : host.defaultLocalDirectory
             if !host.defaultRemoteDirectory.isEmpty { form.remotePath = host.defaultRemoteDirectory }
         }
     }

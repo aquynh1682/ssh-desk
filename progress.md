@@ -2,6 +2,12 @@
 
 Ghi mới nhất ở trên. Mỗi phiên: làm gì, còn dở gì, bước tiếp theo.
 
+## 2026-10-22 (tiếp) — E3, D1–D4, harness
+- E3 port forward, D1 xuất/nhập, D4 Cài đặt, D2 vòng đời app, D3 tài liệu: code xong, PM duyệt; D4/D2 đã qua qa-reviewer. make check xanh 575 test.
+- Harness: thêm `qa-reviewer`, `doc-writer`, `pm`, `product-advisor` + skill `ssh-desk-delivery`.
+- Sự cố: doc-writer tạo `docs/ARCHITECTURE.md` đè `docs/architecture.md` (macOS không phân biệt hoa thường) → khôi phục từ git, bản đọc nhanh đổi thành `docs/OVERVIEW.md`; đã ghi vào skill.
+- **Chờ người dùng:** make install + thử toàn bộ `[~]`; chọn ý tưởng trong `docs/ideas.md` (product-advisor). Push/PR khi được yêu cầu.
+
 ## 2026-10-22 — G3/H2, G4, Monitor
 - G3 (UI Analyst) + H2 (mật khẩu Windows qua clipboard, ADR-018) xong. Ảnh phản hồi "bảng quá to" của người dùng là bản cũ (app chạy từ build/ trước G3, chưa make install).
 - G4 (ADR-010b): tự điền prompt keyboard-interactive `(user@host) Password:` — nguyên nhân Analyst bắt nhập tay. I1+I2 Monitor (ADR-019). make check xanh 476 test.

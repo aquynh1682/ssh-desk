@@ -238,10 +238,12 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
   - **Windows App:** mặc định cho máy mới: toàn màn hình, nhiều màn hình, chia sẻ clipboard (chỉ áp dụng khi tạo máy mới).
   - **Dữ liệu:** Xuất / Nhập (ADR-020), mở thư mục dữ liệu, phiên bản app + schema, đường dẫn SQLite.
 - Không có: tắt kiểm tra host key, lưu password ra file, chọn sáng/tối (theo hệ thống).
+- **Đã làm (D4, PM duyệt + QA đạt):** migration **v7** `settings`, `Settings/AppSettings.swift`, `SettingsRepository` + `SettingsStore` (đọc mỗi lần dùng), `AutofillGatedCredentialStore` bọc Keychain cho mọi đường tự điền (QA lần theo từng chỗ gọi). Tắt tự điền áp dụng cho kết nối mở sau đó; tab Warp đang mở giữ askpass tới khi đóng. Ô đường dẫn Include lưu khi Return hoặc rời ô.
 
 ## ADR-022: Vòng đời app & hoàn thiện UI (D2) — Đã chốt
 - Thoát app (⌘Q, đóng cửa sổ khi cài đặt là Thoát) khi còn job truyền đang chạy/tunnel/Monitor/Analyst đang chạy → hộp xác nhận liệt kê từng loại. Đồng ý: huỷ job (đánh dấu Bị gián đoạn), dừng tunnel, đóng mọi master (`-O exit`), xoá clipboard password (ADR-018) rồi thoát.
 - Empty state cho mọi màn còn thiếu (danh sách rỗng, tìm không thấy, thư mục rỗng, chưa có key, chưa có lịch sử).
 - Phím tắt: ⌘N máy chủ mới, ⌘F tìm, ⌘D nhân bản, ⌘Return mở (Warp/Windows App), ⌘E sửa, ⌫ xoá (có xác nhận), ⌘, Cài đặt, ⌘1…⌘6 chuyển mục sidebar. Liệt kê trong menu để thấy được.
 - Đồng bộ Theme cho form hồ sơ, màn import, AuthPromptCard, màn lỗi DB (phần còn lại của UI1).
+- **Đã làm (D2, PM duyệt + QA đạt):** `App/QuitActivity.swift` (thêm loại thứ 5: tác vụ SSH Keys). Khi thoát: job **đang chạy → Đã huỷ**, job **đang chờ → Bị gián đoạn** (PM duyệt lệch so với câu chữ ban đầu). Xoá host là ⌘⌫ ở menu + ⌫ trần khi bảng có focus; mỗi phím tắt chỉ một nguồn (menu). "Giữ chạy nền": đóng cửa sổ thì Monitor dừng, job/tunnel vẫn chạy. Thoát bằng SIGTERM/crash không dọn được master (KNOWN_LIMITATIONS).
 

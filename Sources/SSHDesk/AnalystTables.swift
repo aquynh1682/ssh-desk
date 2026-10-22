@@ -96,7 +96,7 @@ struct AnalystResultsTable: View {
     var maxHeight: CGFloat?
 
     var body: some View {
-        let rows = AnalystPresentation.rows(run)
+        let rows = AnalystPresentation.rows(run, timeout: analyst.probeTimeout)
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 cell("Nguồn", flex: true).frame(maxWidth: .infinity, alignment: .leading)
@@ -344,7 +344,9 @@ struct AnalystHistoryTab: View {
             if a.history.isEmpty {
                 ContentUnavailableView(
                     "Chưa có lần chạy nào", systemImage: "clock",
-                    description: Text("Mỗi lần “Chạy kiểm tra” xong sẽ được lưu lại ở đây (giữ 50 lần gần nhất).")
+                    description: Text(
+                        "Mỗi lần “Chạy kiểm tra” xong sẽ được lưu lại ở đây (giữ \(model.settings.analystRetention) lần gần nhất)."
+                    )
                 )
                 .frame(maxWidth: .infinity).padding(.top, 60)
             } else {

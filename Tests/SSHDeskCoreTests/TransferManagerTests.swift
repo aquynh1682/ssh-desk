@@ -357,6 +357,47 @@ extension ProcessGroup {
             #expect(await h.manager.hasActiveJobs == false)
         }
 
+        @Test(.enabled(if: on)) func shutdownCancelsRunningAndInterruptsQueued() async throws {
+            let h = try await ManagerHarness(script: "")
+            defer { h.cleanup() }
+            try Data("#!/bin/sh\nsleep 30\nexec \(ManagerHarness.sftp)\n".utf8)
+                .write(to: h.root.appendingPathComponent("fakessh"))
+            let src = h.remote.appendingPathComponent("f.txt")
+            try h.write(src, "R")
+            let j1 = h.job(
+                .download, source: src.path, destination: h.out.appendingPathComponent("1").path)
+            let j2 = h.job(
+                .download, source: src.path, destination: h.out.appendingPathComponent("2").path)
+            try await h.manager.enqueue(j1)
+            try await h.manager.enqueue(j2)
+            _ = try await h.wait(j1.id) { $0.state == .connecting }
+            await h.manager.shutdown(cancelRunning: true)
+            #expect(try await h.wait(j1.id).state == .cancelled)
+            #expect(try await h.wait(j2.id).state == .interrupted)
+            #expect(await h.manager.hasActiveJobs == false)
+        }
+
+        @Test(.enabled(if: on)) func concurrencyCanBeRaisedWhileQueued() async throws {
+            let h = try await ManagerHarness(script: "")
+            defer { h.cleanup() }
+            try Data("#!/bin/sh\nsleep 30\nexec \(ManagerHarness.sftp)\n".utf8)
+                .write(to: h.root.appendingPathComponent("fakessh"))
+            let src = h.remote.appendingPathComponent("f.txt")
+            try h.write(src, "R")
+            let j1 = h.job(
+                .download, source: src.path, destination: h.out.appendingPathComponent("1").path)
+            let j2 = h.job(
+                .download, source: src.path, destination: h.out.appendingPathComponent("2").path)
+            try await h.manager.enqueue(j1)
+            try await h.manager.enqueue(j2)
+            _ = try await h.wait(j1.id) { $0.state == .connecting }
+            try await Task.sleep(nanoseconds: 150_000_000)
+            #expect(try await h.repo.job(id: j2.id)?.state == .queued)  // đồng thời = 1
+            await h.manager.setConcurrency(2)
+            _ = try await h.wait(j2.id) { $0.state == .connecting }
+            await h.manager.shutdown(cancelRunning: true)
+        }
+
         private static let secret = "S3cr3t-Zq7!pw"
         private static let promptScript = """
             printf "deploy@web.example.com's password: " > /dev/tty

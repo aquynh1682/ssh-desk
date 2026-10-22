@@ -121,14 +121,16 @@ struct HostFormView: View {
                     }
                 }
                 if let g = errors[.general] ?? errors[.alias] {
-                    Text(g).foregroundStyle(.red)
+                    Text(g).foregroundStyle(Theme.red)
                 }
             }
             .formStyle(.grouped)
-            Divider()
+            .scrollContentBackground(.hidden)
+            Divider().overlay(Theme.divider)
             HStack {
                 Spacer()
-                Button("Huỷ") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Huỷ") { dismiss() }
+                    .buttonStyle(OutlineButtonStyle()).keyboardShortcut(.cancelAction)
                 Button("Lưu") {
                     if !isDuplicate && draft.removesStoredPassword(hasSavedPassword: hasSavedPassword) {
                         confirmRemoveOnSave = true
@@ -136,11 +138,14 @@ struct HostFormView: View {
                         Task { await save() }
                     }
                 }
+                .buttonStyle(ProminentButtonStyle())
                 .keyboardShortcut(.defaultAction)
                 .disabled(!errors.isEmpty || folderError != nil || saving)
+                .opacity(!errors.isEmpty || folderError != nil || saving ? 0.5 : 1)
             }
             .padding(12)
         }
+        .background(Theme.windowBackground)
         .frame(width: 520, height: 560)
         .onAppear(perform: load)
         .confirmationDialog(
@@ -299,13 +304,14 @@ struct HostFormView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             content()
-            if let e = errors[f] { Text(e).font(.caption).foregroundStyle(.red) }
+            if let e = errors[f] { Text(e).font(.caption).foregroundStyle(Theme.red) }
         }
     }
 
     private func load() {
         guard !loaded else { return }
         loaded = true
+        if case .new = target { draft = HostDraft(newHostDefaults: model.settings) }
         if case .duplicate(let source, let copy) = target {
             duplicateSource = source
             base = copy

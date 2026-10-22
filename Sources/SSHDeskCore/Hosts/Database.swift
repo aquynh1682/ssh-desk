@@ -168,7 +168,14 @@ public final class Database: @unchecked Sendable {
             "CREATE UNIQUE INDEX idx_port_forwards_local ON port_forwards(local_port)",
             "CREATE INDEX idx_port_forwards_host ON port_forwards(host_id)",
         ]),
+        // v7: cài đặt app (ADR-021). Chỉ khoá/giá trị văn bản, không bí mật.
+        Migration(statements: [
+            "CREATE TABLE settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)"
+        ]),
     ]
+
+    /// Phiên bản schema mà bản app này biết (hiện ở màn Cài đặt).
+    public static var currentSchemaVersion: Int { migrations.count }
 
     private static let sqliteMagic = Data("SQLite format 3\0".utf8)
 

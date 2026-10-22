@@ -99,8 +99,8 @@ public enum AnalystCommand: Sendable, Equatable {
     case addresses
     case hostnameIPs
     case hostname
-    case probeBash(IPLiteral, Port)
-    case probeNc(IPLiteral, Port)
+    case probeBash(IPLiteral, Port, timeout: ProbeTimeout = .default)
+    case probeNc(IPLiteral, Port, timeout: ProbeTimeout = .default)
 
     /// Chuỗi gửi cho shell remote. `nil` nếu không hỗ trợ: probe bash chỉ cho IPv4 (hỗ trợ IPv6 trong
     /// `/dev/tcp` chưa được xác minh trên mọi bản bash → IPv6 chỉ probe bằng `nc -6`).
@@ -111,13 +111,21 @@ public enum AnalystCommand: Sendable, Equatable {
         case .addresses: return "ip -o addr show"
         case .hostnameIPs: return "hostname -I"
         case .hostname: return "hostname"
-        case .probeBash(let ip, let port):
+        case .probeBash(let ip, let port, let timeout):
             guard ip.version == .v4 else { return nil }
-            return "timeout 3 bash -c '</dev/tcp/\(ip.address)/\(port.value)'"
-        case .probeNc(let ip, let port):
+            return "timeout \(timeout.seconds) bash -c '</dev/tcp/\(ip.address)/\(port.value)'"
+        case .probeNc(let ip, let port, let timeout):
             let family = ip.version == .v6 ? "-6 " : ""
-            return "nc -z -w3 \(family)\(ip.address) \(port.value)"
+            return "nc -z -w\(timeout.seconds) \(family)\(ip.address) \(port.value)"
         }
+    }
+
+    /// Mẫu hai lệnh probe (IP/cổng là chỗ giữ chỗ) để hiện trong hộp xác nhận PROD.
+    public static func probeTemplates(timeout: ProbeTimeout) -> (bash: String, nc: String) {
+        (
+            "timeout \(timeout.seconds) bash -c '</dev/tcp/<IP đích>/<cổng>'",
+            "nc -z -w\(timeout.seconds) <IP đích> <cổng>"
+        )
     }
 
     /// Tên công cụ chính (để báo "thiếu công cụ").

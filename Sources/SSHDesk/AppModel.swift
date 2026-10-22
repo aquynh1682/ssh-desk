@@ -14,10 +14,11 @@ enum SidebarItem: Hashable {
     case analyst
     case monitor
     case keys
+    case settings
 
     var isHostSection: Bool {
         switch self {
-        case .transfers, .analyst, .monitor, .keys: return false
+        case .transfers, .analyst, .monitor, .keys, .settings: return false
         default: return true
         }
     }
@@ -121,6 +122,13 @@ final class AppModel {
     private(set) var browser: FileBrowserModel?
     /// Keychain thật; ACL tin cậy cả helper `sshdesk-askpass` (nếu tìm thấy trong bundle).
     let credentials: any CredentialStore
+    /// Kho bí mật dành cho MỌI chỗ tự điền (PTY, tunnel, phiên SFTP, cài key): trả nil khi cài đặt tắt tự điền.
+    let autofillCredentials: any CredentialStore
+    /// Bản cài đặt dùng chung với các service Core (ADR-021).
+    let settingsStore = SettingsStore()
+    /// Cài đặt hiện hành cho UI (đổi qua `updateSettings`).
+    private(set) var settings = AppSettings.default
+    private var settingsRepository: SettingsRepository?
     /// Clipboard giữ mật khẩu Windows tạm thời (ADR-018); xoá khi thoát app.
     let secretClipboard = SecretClipboard()
     /// Màn "SSH Keys": liệt kê, tạo, cài key (ADR-014).
@@ -144,8 +152,13 @@ final class AppModel {
 
     init(paths: AppPaths = .default) {
         self.paths = paths
-        credentials = KeychainCredentialStore(
+        let store = KeychainCredentialStore(
             trustedApplicationPaths: AskpassHelper.defaultURL().map { [$0.path] } ?? [])
+        credentials = store
+        let settingsStore = self.settingsStore
+        autofillCredentials = AutofillGatedCredentialStore(base: store) {
+            settingsStore.current.autofillEnabled
+        }
     }
 
     // MARK: - Khởi động
@@ -157,13 +170,20 @@ final class AppModel {
             // Database(url:) từ chối file hỏng/schema mới hơn và không ghi đè.
             let db = try Database(url: paths.databaseURL)
             let repo = HostRepository(database: db)
+            let settingsRepo = SettingsRepository(database: db)
+            settingsRepository = settingsRepo
+            let loaded = settingsRepo.load()
+            settingsStore.update(loaded)
+            settings = loaded
             let service = ConnectionService(
                 repository: repo, appConfigURL: paths.sshConfigURL,
-                userConfigPath: AppPaths.existingUserConfigPath(), launcher: WarpLauncher(),
+                userConfigPath: nil, launcher: WarpLauncher(),
                 credentials: credentials, secretClipboard: secretClipboard,
-                askpassHelper: AskpassHelper.defaultURL())
+                askpassHelper: AskpassHelper.defaultURL(), settings: settingsStore)
             self.service = service
-            analystRepository = AnalystRunRepository(database: db)
+            analystRepository = AnalystRunRepository(
+                database: db, retention: loaded.analystRetention)
+            monitor.applyDefaultInterval(loaded.monitorIntervalSeconds)
             let forwardRepo = PortForwardRepository(database: db)
             forwardRepository = forwardRepo
             try await service.regenerateSSHConfig()
@@ -171,7 +191,7 @@ final class AppModel {
             folders = try await repo.folders()
             forwards = try await forwardRepo.all()
             try await startTransfers(database: db, hosts: repo)
-            browser = FileBrowserModel(app: self, credentials: credentials)
+            browser = FileBrowserModel(app: self, credentials: autofillCredentials)
             phase = .ready
         } catch {
             phase = .failed(
@@ -182,15 +202,17 @@ final class AppModel {
     }
 
     private func startTransfers(database: Database, hosts repo: HostRepository) async throws {
-        let repository = TransferRepository(database: database)
+        let repository = TransferRepository(
+            database: database, retention: settings.transferHistoryLimit)
         let manager = TransferManager(
-            repository: repository, hosts: repo,
-            controllingTTYHelper: ControllingTTYHelper.defaultURL(), credentials: credentials)
+            repository: repository, hosts: repo, concurrency: settings.transferConcurrency,
+            controllingTTYHelper: ControllingTTYHelper.defaultURL(),
+            credentials: autofillCredentials)
         transferRepository = repository
         transfers = manager
         // Job dở dang của lần chạy trước → "Bị gián đoạn" (hiện trong lịch sử).
         _ = try await manager.recoverInterrupted()
-        jobs = try await repository.history()
+        jobs = try await repository.history(limit: nil)
         eventsTask = Task { [weak self] in
             for await event in manager.events {
                 self?.handle(event)
@@ -270,7 +292,7 @@ final class AppModel {
             byRecency = true
         case .folder(let p): list = list.filter { $0.project == p }
         case .uncategorized: list = list.filter { $0.project.isEmpty }
-        case .transfers, .analyst, .monitor, .keys: break
+        case .transfers, .analyst, .monitor, .keys, .settings: break
         }
         list = HostPresentation.filter(list, environment: effectiveEnvironment)
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -287,7 +309,7 @@ final class AppModel {
 
     var columnTitle: String {
         switch sidebar {
-        case .all, .environment, .transfers, .analyst, .monitor, .keys: return "Máy chủ"
+        case .all, .environment, .transfers, .analyst, .monitor, .keys, .settings: return "Máy chủ"
         case .favorites: return "Yêu thích"
         case .recent: return "Gần đây"
         case .folder(let p): return p
@@ -493,7 +515,9 @@ final class AppModel {
         case .requested:
             switch report.passwordCopy {
             case .none: showToast("Đã yêu cầu Windows App mở kết nối — nhập mật khẩu trong Windows App")
-            case .copied: showToast(Self.passwordCopiedToast)
+            case .copied: showToast(passwordCopiedToast)
+            case .disabled:
+                showToast("Đã mở Windows App — đang tắt tự điền mật khẩu (Cài đặt), nhập mật khẩu trong Windows App")
             case .failed(let why): showToast("Đã mở Windows App nhưng không copy được mật khẩu: \(why)")
             }
             await reload()
@@ -504,14 +528,17 @@ final class AppModel {
         }
     }
 
-    static let passwordCopiedToast = "Đã copy mật khẩu — dán (⌘V) vào Windows App. Tự xoá sau 30 giây."
+    var passwordCopiedToast: String {
+        "Đã copy mật khẩu — dán (⌘V) vào Windows App. Tự xoá sau \(settings.clipboardClearSeconds) giây."
+    }
 
     /// Menu "Copy mật khẩu" của máy Windows có mật khẩu lưu.
     func copyWindowsPassword(_ host: HostProfile) async {
         guard let service else { return }
         switch await service.copyStoredWindowsPassword(host) {
         case .none: showToast("Máy này chưa lưu mật khẩu")
-        case .copied: showToast("Đã copy mật khẩu. Tự xoá sau 30 giây.")
+        case .copied: showToast("Đã copy mật khẩu. Tự xoá sau \(settings.clipboardClearSeconds) giây.")
+        case .disabled: showToast("Đang tắt tự điền mật khẩu đã lưu (Cài đặt) nên không copy.")
         case .failed(let why): showToast("Không copy được mật khẩu: \(why)")
         }
     }
@@ -654,6 +681,120 @@ final class AppModel {
     /// Dùng khi thoát: huỷ job đang chạy rồi dừng manager.
     func shutdownTransfers(cancelRunning: Bool) async {
         await transfers?.shutdown(cancelRunning: cancelRunning)
+    }
+
+    // MARK: - Phím tắt & vòng đời (ADR-022)
+
+    /// Mục sidebar ứng với ⌘1…⌘6 (theo thứ tự trên sidebar).
+    static let shortcutSections: [(title: String, item: SidebarItem)] = [
+        ("Tất cả máy chủ", .all), ("Yêu thích", .favorites), ("Truyền file", .transfers),
+        ("Gần đây", .recent), ("Project Analyst", .analyst), ("Monitor", .monitor),
+    ]
+
+    var hasSelectedHost: Bool { isReadyForCommands && selectedHost != nil && sidebar.isHostSection }
+
+    private var isReadyForCommands: Bool {
+        if case .ready = phase { return form == nil && pendingDelete == nil }
+        return false
+    }
+
+    func openSelected() {
+        guard hasSelectedHost, let host = selectedHost else { return }
+        Task { await open(host) }
+    }
+
+    func editSelected() {
+        guard hasSelectedHost, let host = selectedHost else { return }
+        form = .edit(host)
+    }
+
+    func duplicateSelected() {
+        guard hasSelectedHost, let host = selectedHost else { return }
+        beginDuplicate(host)
+    }
+
+    /// Luôn đi qua hộp xác nhận (`pendingDelete`).
+    func deleteSelected() {
+        guard hasSelectedHost, let host = selectedHost else { return }
+        pendingDelete = host
+    }
+
+    /// Việc đang chạy, để hỏi trước khi thoát.
+    var quitActivity: QuitActivity {
+        QuitActivity(
+            transfers: jobs.filter { !$0.state.isTerminal }.count, tunnels: tunnels.activeCount,
+            monitorRunning: monitor.isRunning, analystRunning: analyst.isRunning,
+            keyTaskRunning: keys.isBusy)
+    }
+
+    // MARK: - Cài đặt (ADR-021)
+
+    /// Đổi một hay nhiều cài đặt: chuẩn hoá, lưu SQLite, rồi áp dụng ngay vào các service đang chạy.
+    func updateSettings(_ change: (inout AppSettings) -> Void) {
+        var next = settings
+        change(&next)
+        next = next.normalized
+        guard next != settings else { return }
+        let old = settings
+        do { next = try settingsRepository?.save(next) ?? next } catch {
+            show(error, title: "Không lưu được cài đặt")
+            return
+        }
+        settings = next
+        settingsStore.update(next)
+        if next.transferConcurrency != old.transferConcurrency {
+            let n = next.transferConcurrency
+            Task { await transfers?.setConcurrency(n) }
+        }
+        if next.transferHistoryLimit != old.transferHistoryLimit {
+            let n = next.transferHistoryLimit
+            Task {
+                await transferRepository?.setRetention(n)
+                if let list = try? await transferRepository?.history() { jobs = list }
+            }
+        }
+        if next.analystRetention != old.analystRetention {
+            let n = next.analystRetention
+            Task { await analystRepository?.setRetention(n) }
+        }
+        if next.monitorIntervalSeconds != old.monitorIntervalSeconds {
+            monitor.applyDefaultInterval(next.monitorIntervalSeconds)
+        }
+        if next.userSSHConfigPath != old.userSSHConfigPath {
+            Task {
+                do { try await service?.regenerateSSHConfig() } catch {
+                    show(error, title: "Không sinh lại được SSH config")
+                }
+            }
+        }
+    }
+
+    /// Đường dẫn config người dùng đang được Include (nil = không có).
+    var effectiveUserConfigPath: String? { settings.effectiveUserConfigPath() }
+
+    /// Số host đang lưu mật khẩu (cho hộp xác nhận "Xoá mọi mật khẩu đã lưu").
+    func savedPasswordCount() async -> Int {
+        (try? await service?.savedPasswordCount()) ?? 0
+    }
+
+    func clearAllPasswords() async {
+        guard let service else { return }
+        do {
+            let r = try await service.clearAllPasswords()
+            await reload()
+            if r.failed > 0 {
+                alert = AppAlert(
+                    title: "Xoá mật khẩu chưa hoàn tất",
+                    message:
+                        "Đã xoá \(r.removed) mật khẩu; \(r.failed) mục không xoá được (Keychain từ chối). Thử lại sau.")
+            } else {
+                showToast("Đã xoá \(r.removed) mật khẩu đã lưu")
+            }
+        } catch { show(error, title: "Không xoá được mật khẩu") }
+    }
+
+    func revealSSHConfigFolder() {
+        NSWorkspace.shared.activateFileViewerSelecting([paths.sshConfigURL])
     }
 
     // MARK: - Thông báo

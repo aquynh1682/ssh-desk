@@ -494,7 +494,7 @@ struct AnalystDetailPanel: View {
                 }
             }
             Divider().overlay(Theme.divider)
-            checkBlock(AnalystPresentation.sourceCheck(result))
+            checkBlock(AnalystPresentation.sourceCheck(result, timeout: analyst.probeTimeout))
             Divider().overlay(Theme.divider)
             checkBlock(AnalystPresentation.destinationCheck(result, flow: tf))
             Divider().overlay(Theme.divider)
@@ -569,9 +569,12 @@ struct AnalystDetailPanel: View {
                             Spacer()
                             Text(r.map { AnalystPresentation.resultText($0.outcome) } ?? "Chưa thử")
                                 .foregroundStyle(style.color)
-                            Text(r.map { AnalystPresentation.timeText($0.outcome) } ?? "—")
-                                .font(.system(size: 12.5).monospacedDigit())
-                                .foregroundStyle(Theme.textSecondary)
+                            Text(
+                                r.map { AnalystPresentation.timeText($0.outcome, timeout: analyst.probeTimeout) }
+                                    ?? "—"
+                            )
+                            .font(.system(size: 12.5).monospacedDigit())
+                            .foregroundStyle(Theme.textSecondary)
                             Image(systemName: "chevron.right").font(.system(size: 10))
                                 .foregroundStyle(Theme.textTertiary)
                         }

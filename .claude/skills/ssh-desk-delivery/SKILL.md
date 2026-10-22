@@ -28,7 +28,7 @@ Một thư mục làm việc, một `.build` dùng chung. Hai agent cùng build 
 
 ## 2. Tài liệu — `doc-writer` (chạy song song với coder được)
 - Chỉ đụng file `.md` và không build, nên không xung đột với coder.
-- D3 gồm: `README.md` (cài bằng `make install`, tính năng, cách dùng nhanh), `docs/ARCHITECTURE.md` (bản đọc dễ của architecture.md: module, luồng SSH config/Warp/askpass/ControlMaster), `docs/TESTING.md` (`make check`, plugin-path, sshd tạm, kịch bản thử tay), `docs/KNOWN_LIMITATIONS.md` (gom mọi "Rủi ro chấp nhận" và "Chưa kiểm chứng" trong ADR).
+- D3 gồm: `README.md` (cài bằng `make install`, tính năng, cách dùng nhanh), `docs/OVERVIEW.md` (KHÔNG đặt tên ARCHITECTURE.md: macOS không phân biệt hoa/thường, sẽ ghi đè architecture.md) (bản đọc dễ của architecture.md: module, luồng SSH config/Warp/askpass/ControlMaster), `docs/TESTING.md` (`make check`, plugin-path, sshd tạm, kịch bản thử tay), `docs/KNOWN_LIMITATIONS.md` (gom mọi "Rủi ro chấp nhận" và "Chưa kiểm chứng" trong ADR).
 - Khi tính năng mới vào sau, giao doc-writer cập nhật lại các file liên quan.
 
 ## 3. QA — `qa-reviewer`

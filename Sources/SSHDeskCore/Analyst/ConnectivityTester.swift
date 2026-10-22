@@ -58,10 +58,13 @@ public actor ConnectivityTester {
 
     private let executors: [UUID: any RemoteCommandExecuting]
     private let maxParallel: Int
+    private let probeTimeout: ProbeTimeout
 
     public init(
-        executors: [UUID: any RemoteCommandExecuting], maxParallel: Int = defaultMaxParallel
+        executors: [UUID: any RemoteCommandExecuting], maxParallel: Int = defaultMaxParallel,
+        probeTimeout: ProbeTimeout = .default
     ) {
+        self.probeTimeout = probeTimeout
         self.executors = executors
         self.maxParallel = max(1, min(maxParallel, Self.defaultMaxParallel))
     }
@@ -87,6 +90,7 @@ public actor ConnectivityTester {
 
         var results = [FlowTestResult?](repeating: nil, count: flows.count)
         let limit = maxParallel
+        let timeout = probeTimeout
         await withTaskGroup(of: (Int, FlowTestResult).self) { group in
             var next = 0
             var inFlight = 0
@@ -94,7 +98,7 @@ public actor ConnectivityTester {
                 let tf = flows[i]
                 let check = checks[tf.flow] ?? .unknown
                 group.addTask {
-                    (i, await Self.test(tf, check: check, executor: executors[tf.flow.source]))
+                    (i, await Self.test(tf, check: check, executor: executors[tf.flow.source], timeout: timeout))
                 }
             }
             while next < flows.count, inFlight < limit {
@@ -142,7 +146,8 @@ public actor ConnectivityTester {
     // MARK: - Probe
 
     static func test(
-        _ tf: TopologyFlow, check: DestinationCheck, executor: (any RemoteCommandExecuting)?
+        _ tf: TopologyFlow, check: DestinationCheck, executor: (any RemoteCommandExecuting)?,
+        timeout: ProbeTimeout = .default
     ) async -> FlowTestResult {
         func make(_ outcome: ProbeOutcome, _ evidence: [Evidence]) -> FlowTestResult {
             var ev = evidence
@@ -182,7 +187,7 @@ public actor ConnectivityTester {
         // 1) bash /dev/tcp (chỉ IPv4)
         var bashNote: String?
         if ip.version == .v4 {
-            let step = await attempt(.probeBash(ip, port), executor)
+            let step = await attempt(.probeBash(ip, port, timeout: timeout), executor)
             switch step.kind {
             case .error(let e):
                 switch e {
@@ -209,7 +214,7 @@ public actor ConnectivityTester {
         }
 
         // 2) nc
-        let step = await attempt(.probeNc(ip, port), executor)
+        let step = await attempt(.probeNc(ip, port, timeout: timeout), executor)
         switch step.kind {
         case .error(let e):
             if case .toolMissing(let name) = e {

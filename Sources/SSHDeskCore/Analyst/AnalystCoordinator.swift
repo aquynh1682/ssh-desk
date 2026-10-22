@@ -78,11 +78,13 @@ public actor AnalystCoordinator {
     private let sessions: any AnalystSessionProviding
     private let repository: AnalystRunRepository?
     private let now: @Sendable () -> Date
+    private let probeTimeout: ProbeTimeout
 
     public init(
         sessions: any AnalystSessionProviding, repository: AnalystRunRepository?,
-        now: @escaping @Sendable () -> Date = { Date() }
+        probeTimeout: ProbeTimeout = .default, now: @escaping @Sendable () -> Date = { Date() }
     ) {
+        self.probeTimeout = probeTimeout
         self.sessions = sessions
         self.repository = repository
         self.now = now
@@ -270,7 +272,7 @@ public actor AnalystCoordinator {
     ) async throws -> [FlowTestResult] {
         let flows = c.topology.flows
         if flows.isEmpty { return [] }
-        let tester = ConnectivityTester(executors: c.executors)
+        let tester = ConnectivityTester(executors: c.executors, probeTimeout: probeTimeout)
         let results = await tester.run(flows: flows) { done, total in
             progress?(.testing(done: done, total: total))
         }
@@ -297,7 +299,7 @@ public actor AnalystCoordinator {
                 }
             }
         }
-        let tester = ConnectivityTester(executors: executors)
+        let tester = ConnectivityTester(executors: executors, probeTimeout: probeTimeout)
         let r = await tester.run(flows: [flow])
         try Task.checkCancellation()
         return r.first

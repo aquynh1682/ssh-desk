@@ -123,6 +123,12 @@ struct HostListView: View {
                             groupHeader(group)
                             if !model.collapsedGroups.contains(group.name) {
                                 ForEach(group.hosts) { host in row(host) }
+                                if group.hosts.isEmpty {
+                                    Text("Thư mục trống — kéo máy chủ vào đây ở thanh bên hoặc thêm máy mới.")
+                                        .font(.system(size: 12)).foregroundStyle(Theme.textTertiary)
+                                        .padding(.horizontal, 40).padding(.vertical, 10)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
                             }
                         }
                     }
@@ -140,15 +146,15 @@ struct HostListView: View {
         .focusable()
         .focused($listFocused)
         .focusEffectDisabled()
-        // Return = Mở Warp; ↑/↓ đổi chọn. Chỉ nhận phím khi bảng đang giữ focus (ô tìm kiếm tự nhận phím của nó).
+        // Return = Mở Warp; ↑/↓ đổi chọn; ⌫ xoá. Phím có ⌘ (⌘D/⌘E/⌘Return/⌘⌫) chỉ đi qua menu để khỏi chạy hai lần. Chỉ nhận phím khi bảng đang giữ focus (ô tìm kiếm tự nhận phím của nó).
         .onKeyPress(.return) {
             guard let host = model.selectedHost else { return .ignored }
             Task { await model.open(host) }
             return .handled
         }
-        .onKeyPress(keys: [KeyEquivalent("d")]) { press in
-            guard press.modifiers == .command, let host = model.selectedHost else { return .ignored }
-            model.beginDuplicate(host)
+        .onKeyPress(.delete) {
+            guard model.selectedHost != nil else { return .ignored }
+            model.deleteSelected()
             return .handled
         }
         .onKeyPress(.upArrow) { moveSelection(-1) }
@@ -329,14 +335,29 @@ struct HostListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
+    private var emptyScope: HostEmptyState.Scope {
+        if let env = model.effectiveEnvironment { return .environment(env) }
+        switch model.sidebar {
+        case .favorites: return .favorites
+        case .recent: return .recent
+        case .folder(let name): return .folder(name)
+        case .uncategorized: return .uncategorized
+        default: return .all
+        }
+    }
+
     private var noResults: some View {
-        if !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
-            ContentUnavailableView.search
-        } else {
-            ContentUnavailableView(
-                "Không có máy chủ nào ở đây", systemImage: "tray",
-                description: Text("Đổi mục ở thanh bên hoặc bộ lọc môi trường."))
+        let searching = !model.searchText.trimmingCharacters(in: .whitespaces).isEmpty
+        let c = HostEmptyState.content(
+            scope: emptyScope, searching: searching, hasAnyHosts: !model.hosts.isEmpty)
+        return ContentUnavailableView {
+            Label(c.title, systemImage: c.symbol)
+        } description: {
+            Text(c.message)
+        } actions: {
+            if c.offersAdd {
+                Button("Thêm máy chủ") { model.form = .new }.buttonStyle(.borderedProminent)
+            }
         }
     }
 }

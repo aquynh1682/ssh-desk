@@ -25,7 +25,7 @@ public enum TunnelEvent: Sendable, Equatable {
 /// Dựng argv của phiên tunnel. Không shell; mọi giá trị là một phần tử argv riêng.
 public enum TunnelCommand {
     /// `-F <cfg> -N -o ExitOnForwardFailure=yes -o ControlMaster=no -o ControlPath=none
-    ///  -L 127.0.0.1:<lp>:<rh>:<rp> -- <alias>` (đúng ADR-011).
+    ///  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 127.0.0.1:<lp>:<rh>:<rp> -- <alias>` (đúng ADR-011).
     /// Không `BatchMode`: prompt xác thực đi qua PTY. Bind luôn `127.0.0.1` (không mở ra LAN).
     public static func arguments(configPath: String, alias: String, forward: PortForward) throws
         -> [String]
@@ -38,6 +38,7 @@ public enum TunnelCommand {
             "-o", "ExitOnForwardFailure=yes",
             "-o", "ControlMaster=no",
             "-o", "ControlPath=none",
+            "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
             "-L", "127.0.0.1:\(f.localPort):\(f.remoteHost):\(f.remotePort)",
             "--", alias,
         ]

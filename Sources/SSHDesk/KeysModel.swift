@@ -132,7 +132,7 @@ final class KeysModel {
             let force = host.connectionMode == .managed && host.authMethod == .keyFile
             let installer = try SSHKeyInstaller(
                 configPath: app.paths.sshConfigURL.path, publicKeyPath: key.publicKeyPath, alias: alias,
-                host: host, credentials: app.credentials, helper: ControllingTTYHelper.defaultURL(),
+                host: host, credentials: app.autofillCredentials, helper: ControllingTTYHelper.defaultURL(),
                 force: force)
             let session = try await installer.start()
             run(session, info: KeyTaskInfo(kind: .install(keyName: key.name, hostName: host.displayName))) {

@@ -59,6 +59,8 @@ final class AnalystModel {
     private var runTask: Task<Void, Never>?
     private var coordinator: AnalystCoordinator?
 
+    var probeTimeout: ProbeTimeout { app?.settings.analystProbeTimeout ?? .default }
+
     init(app: AppModel) { self.app = app }
 
     var isRunning: Bool { runTask != nil }
@@ -168,10 +170,11 @@ final class AnalystModel {
             startRun()
             return
         }
+        let templates = AnalystCommand.probeTemplates(timeout: app.settings.analystProbeTimeout)
         let probe =
             "\nSau đó, với mỗi kết nối phát hiện, trên server NGUỒN chạy:\n"
-            + "  timeout 3 bash -c '</dev/tcp/<IP đích>/<cổng>'\n"
-            + "  (dự phòng nếu thiếu bash/timeout) nc -z -w3 <IP đích> <cổng>"
+            + "  \(templates.bash)\n"
+            + "  (dự phòng nếu thiếu bash/timeout) \(templates.nc)"
         prodConfirm = AnalystProdConfirm(
             message: prompt.message + "\n" + probe, prodNames: prompt.prodNames)
         _ = app
@@ -190,7 +193,9 @@ final class AnalystModel {
         selection = nil
         progress = nil
         let provider = makeProvider(app: app)
-        let coord = AnalystCoordinator(sessions: provider, repository: app.analystRepository)
+        let coord = AnalystCoordinator(
+            sessions: provider, repository: app.analystRepository,
+            probeTimeout: app.settings.analystProbeTimeout)
         coordinator = coord
         let sink: @Sendable (AnalystProgress) -> Void = { [weak self] p in
             Task { @MainActor in self?.progress = p }
@@ -236,7 +241,7 @@ final class AnalystModel {
 
     private func makeProvider(app: AppModel) -> PooledAnalystSessions {
         let connector = SessionConnector(
-            configPath: app.paths.sshConfigURL.path, credentials: app.credentials,
+            configPath: app.paths.sshConfigURL.path, credentials: app.autofillCredentials,
             helper: ControllingTTYHelper.defaultURL())
         return PooledAnalystSessions(pool: app.sessionPool, connector: connector) {
             [weak self] host, kind, respond in
@@ -272,7 +277,8 @@ final class AnalystModel {
             let source = host(flow.source), let dest = host(flow.destination)
         else { return }
         let provider = makeProvider(app: app)
-        let coord = AnalystCoordinator(sessions: provider, repository: nil)
+        let coord = AnalystCoordinator(
+            sessions: provider, repository: nil, probeTimeout: app.settings.analystProbeTimeout)
         coordinator = coord
         retesting = flow
         runTask = Task { [weak self] in

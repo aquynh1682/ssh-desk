@@ -59,7 +59,7 @@ public actor TransferManager {
 
     private let repository: TransferRepository
     private let hosts: HostRepository
-    private let concurrency: Int
+    private var concurrency: Int
     private let extraSSHProgram: URL?
     private let environment: [String: String]
     private let progressInterval: TimeInterval
@@ -90,6 +90,13 @@ public actor TransferManager {
         self.environment = environment
         self.progressInterval = progressInterval
         (events, continuation) = AsyncStream<TransferEvent>.makeStream(bufferingPolicy: .unbounded)
+    }
+
+    /// Đổi số tác vụ chạy song song (1–4 ở Cài đặt). Tăng → chạy thêm job đang chờ ngay; giảm → job đang chạy
+    /// không bị ngắt, chỉ không khởi động thêm cho tới khi số job đang chạy xuống dưới mức mới.
+    public func setConcurrency(_ n: Int) {
+        concurrency = max(1, n)
+        pump()
     }
 
     public var hasActiveJobs: Bool { !running.isEmpty || !queue.isEmpty }
@@ -181,7 +188,7 @@ public actor TransferManager {
     }
 
     /// Vòng đời app. Luôn ngừng khởi động job mới. `cancelRunning`: huỷ job đang chạy và chờ
-    /// chúng dọn xong (job `queued` giữ nguyên trong DB → lần khởi động sau thành `interrupted`).
+    /// chúng dọn xong (job còn chờ thành `interrupted` ngay).
     public func shutdown(cancelRunning: Bool) async {
         shuttingDown = true
         guard cancelRunning else { return }
@@ -196,6 +203,9 @@ public actor TransferManager {
             }
         }
         for run in runs { await run.task?.value }
+        // Job còn chờ (chưa chạy) không thể chạy nữa: đánh dấu "Bị gián đoạn" ngay (ADR-022), dọn .part.
+        queue.removeAll()
+        _ = try? await recoverInterrupted()
         continuation.finish()
     }
 

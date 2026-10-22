@@ -64,6 +64,6 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 
 ## Bước D — Hoàn thiện
 - [~] D1 (code xong, PM duyệt; chờ thử tay) Xuất/nhập danh sách máy chủ — ADR-020
-- [ ] D2 (ADR-022) Vòng đời app (thoát khi đang truyền), empty states, shortcut
-- [ ] D4 Màn Cài đặt (spec mục Settings + đề xuất PM: Keychain/clipboard, Analyst, Monitor, Windows App, dữ liệu) — ADR-021
-- [ ] D3 README.md, ARCHITECTURE.md, TESTING.md, KNOWN_LIMITATIONS.md; build `.app`
+- [~] D2 (code xong, QA đạt, PM duyệt; chờ thử tay) (ADR-022) Vòng đời app (thoát khi đang truyền), empty states, shortcut
+- [~] D4 (code xong, QA đạt, PM duyệt; chờ thử tay) Màn Cài đặt (spec mục Settings + đề xuất PM: Keychain/clipboard, Analyst, Monitor, Windows App, dữ liệu) — ADR-021
+- [x] D3 (README, docs/OVERVIEW.md, TESTING, KNOWN_LIMITATIONS) README.md, ARCHITECTURE.md, TESTING.md, KNOWN_LIMITATIONS.md; build `.app`

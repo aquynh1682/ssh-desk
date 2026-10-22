@@ -1,16 +1,18 @@
 import Foundation
 
-/// Mức cảnh báo theo % sử dụng (ADR-019): ≥ 80 vàng, ≥ 90 đỏ.
+/// Mức cảnh báo theo % sử dụng (ADR-019/021): mặc định ≥ 80 vàng, ≥ 90 đỏ; ngưỡng chỉnh được ở Cài đặt.
 public enum MonitorLevel: Sendable, Equatable {
     case unknown, normal, warning, danger
 
     public static let warningThreshold = 80.0
     public static let dangerThreshold = 90.0
 
-    public static func level(forPercent p: Double?) -> MonitorLevel {
+    public static func level(forPercent p: Double?, thresholds: MonitorThresholds = .default)
+        -> MonitorLevel
+    {
         guard let p, p.isFinite else { return .unknown }
-        if p >= dangerThreshold { return .danger }
-        if p >= warningThreshold { return .warning }
+        if p >= Double(thresholds.danger) { return .danger }
+        if p >= Double(thresholds.warning) { return .warning }
         return .normal
     }
 }
@@ -79,9 +81,18 @@ public struct MonitorSnapshot: Sendable, Equatable {
         return Double(m.swapUsedKB) / Double(m.swapTotalKB) * 100
     }
 
-    public var cpuLevel: MonitorLevel { .level(forPercent: cpuPercent) }
-    public var memoryLevel: MonitorLevel { .level(forPercent: memoryPercent) }
-    public var swapLevel: MonitorLevel { .level(forPercent: swapPercent) }
+    public var cpuLevel: MonitorLevel { cpuLevel(using: .default) }
+    public func cpuLevel(using t: MonitorThresholds) -> MonitorLevel {
+        .level(forPercent: cpuPercent, thresholds: t)
+    }
+    public var memoryLevel: MonitorLevel { memoryLevel(using: .default) }
+    public func memoryLevel(using t: MonitorThresholds) -> MonitorLevel {
+        .level(forPercent: memoryPercent, thresholds: t)
+    }
+    public var swapLevel: MonitorLevel { swapLevel(using: .default) }
+    public func swapLevel(using t: MonitorThresholds) -> MonitorLevel {
+        .level(forPercent: swapPercent, thresholds: t)
+    }
 
     /// Dựng snapshot từ đầu ra các lệnh. Trả về cả bộ đếm CPU mới để lần sau tính %.
     public static func make(

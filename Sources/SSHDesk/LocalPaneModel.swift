@@ -22,12 +22,10 @@ final class LocalPaneModel {
     var error: String?
     private var generation = 0
 
-    init() {
-        let downloads =
-            FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first?.path
-            ?? NSHomeDirectory()
-        history = NavigationHistory(start: downloads)
-        pathText = BrowserPath.display(downloads, home: NSHomeDirectory())
+    /// `startDirectory`: thư mục local mặc định từ Cài đặt (ADR-021).
+    init(startDirectory: String) {
+        history = NavigationHistory(start: startDirectory)
+        pathText = BrowserPath.display(startDirectory, home: NSHomeDirectory())
     }
 
     var path: String { history.current }

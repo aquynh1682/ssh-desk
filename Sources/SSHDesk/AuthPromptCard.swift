@@ -67,15 +67,15 @@ struct AuthPromptCard: View {
         let p = PromptPresentation(prompt.kind)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: "lock.shield")
-                Text(p.title).font(.headline)
+                Image(systemName: "lock.shield").foregroundStyle(Theme.textSecondary)
+                Text(p.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.textPrimary)
                 Spacer()
                 if prompt.waiting > 0 {
-                    Text("còn \(prompt.waiting) đang chờ").font(.caption).foregroundStyle(.secondary)
+                    Text("còn \(prompt.waiting) đang chờ").font(.caption).foregroundStyle(Theme.textSecondary)
                 }
             }
             if !prompt.context.isEmpty {
-                Text(prompt.context).font(.caption.monospaced()).foregroundStyle(.secondary)
+                Text(prompt.context).font(.caption.monospaced()).foregroundStyle(Theme.textSecondary)
             }
             Text(p.text).font(.callout.monospaced()).textSelection(.enabled)
             if let fp = p.fingerprint {
@@ -85,34 +85,38 @@ struct AuthPromptCard: View {
             case .secret:
                 SecureField("Nhập rồi nhấn Gửi", text: $secret)
                     .textFieldStyle(.roundedBorder).onSubmit(send)
-                if let note = p.note { Text(note).font(.caption).foregroundStyle(.secondary) }
+                if let note = p.note { Text(note).font(.caption).foregroundStyle(Theme.textSecondary) }
             case .hostKeyDecision, .none: EmptyView()
             }
             HStack {
-                Button(prompt.cancelTitle, role: .destructive) {
+                Button(prompt.cancelTitle) {
                     secret = ""
                     prompt.cancel()
                 }
+                .buttonStyle(OutlineButtonStyle())
+                .foregroundStyle(Theme.red)
                 Spacer()
                 switch p.input {
                 case .secret:
-                    Button("Gửi", action: send).buttonStyle(.borderedProminent)
+                    Button("Gửi", action: send).buttonStyle(ProminentButtonStyle())
                 case .hostKeyDecision:
                     Button("Huỷ") {
                         prompt.send(PromptPresentation.hostKeyDecline.text, false)
                     }
+                    .buttonStyle(OutlineButtonStyle())
                     Button("Tin cậy và tiếp tục") {
                         prompt.send(PromptPresentation.hostKeyTrust.text, false)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(ProminentButtonStyle())
                 case .none: EmptyView()
                 }
             }
         }
         .padding(14)
         .frame(width: 440)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .shadow(radius: 6)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardCorner))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cardCorner).strokeBorder(Theme.cardStroke))
+        .shadow(color: .black.opacity(0.25), radius: 8, y: 2)
     }
 
     private func send() {

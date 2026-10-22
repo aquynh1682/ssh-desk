@@ -57,6 +57,13 @@ public struct HostDraft: Equatable, Sendable {
 
     public init() {}
 
+    /// Máy MỚI: lấy mặc định Windows App từ Cài đặt (ADR-021). Không dùng cho sửa/nhân bản.
+    public init(newHostDefaults settings: AppSettings) {
+        rdpScreenMode = settings.rdpFullScreen ? .fullScreen : .window
+        rdpMultiMonitor = settings.rdpMultiMonitor
+        rdpRedirectClipboard = settings.rdpRedirectClipboard
+    }
+
     /// Đổi loại máy; chuyển cổng mặc định (22 <-> 3389) nếu người dùng chưa sửa cổng.
     public mutating func setKind(_ newKind: HostKind) {
         guard newKind != kind else { return }

@@ -34,6 +34,7 @@ struct MonitorView: View {
                             ForEach(m.hosts) { host in
                                 MonitorCard(
                                     host: host, state: m.states[host.id], running: m.isRunning,
+                                    thresholds: model.settings.monitorThresholds,
                                     retry: { m.retry(host.id) })
                             }
                         }
@@ -109,6 +110,7 @@ struct MonitorCard: View {
     let host: HostProfile
     let state: MonitorHostState?
     let running: Bool
+    var thresholds: MonitorThresholds = .default
     let retry: () -> Void
 
     var body: some View {
@@ -189,7 +191,7 @@ struct MonitorCard: View {
         if let snap = state?.snapshot {
             VStack(alignment: .leading, spacing: 10) {
                 meter(
-                    "CPU", MonitorFormat.percent(snap.cpuPercent), snap.cpuPercent, snap.cpuLevel,
+                    "CPU", MonitorFormat.percent(snap.cpuPercent), snap.cpuPercent, snap.cpuLevel(using: thresholds),
                     history: state?.cpuHistory.values ?? [])
                 Text("Load " + MonitorFormat.load(snap.load, cores: snap.cores))
                     .font(.system(size: 11.5)).foregroundStyle(Theme.textSecondary)
@@ -197,18 +199,20 @@ struct MonitorCard: View {
                     meter(
                         "RAM",
                         "\(MonitorFormat.size(kb: mem.usedKB)) / \(MonitorFormat.size(kb: mem.totalKB))",
-                        snap.memoryPercent, snap.memoryLevel, history: state?.memoryHistory.values ?? [])
+                        snap.memoryPercent, snap.memoryLevel(using: thresholds),
+                        history: state?.memoryHistory.values ?? [])
                     if mem.swapTotalKB > 0 {
                         meter(
                             "Swap",
                             "\(MonitorFormat.size(kb: mem.swapUsedKB)) / \(MonitorFormat.size(kb: mem.swapTotalKB))",
-                            snap.swapPercent, snap.swapLevel, history: [])
+                            snap.swapPercent, snap.swapLevel(using: thresholds), history: [])
                     }
                 }
                 ForEach(snap.disks, id: \.mount) { d in
                     meter(
                         d.mount, "\(MonitorFormat.size(kb: d.usedKB)) / \(MonitorFormat.size(kb: d.totalKB))",
-                        d.percent, .level(forPercent: d.percent), history: [], showPercent: true)
+                        d.percent, .level(forPercent: d.percent, thresholds: thresholds), history: [], showPercent: true
+                    )
                 }
                 HStack {
                     Text("Uptime " + MonitorFormat.uptime(seconds: snap.uptimeSeconds))
