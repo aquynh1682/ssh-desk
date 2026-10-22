@@ -77,6 +77,7 @@ Gom từ mục "Rủi ro chấp nhận" và "Chưa kiểm chứng" trong [archit
 - **Mô tả:** `.app` ký ad-hoc, không notarize, không App Sandbox.
 - **Ảnh hưởng:** Gatekeeper có thể cảnh báo nếu chuyển sang máy khác; ACL Keychain có thể hỏi lại sau mỗi lần build (xem B2). Kéo thả file chỉ chắc chắn trong `.app`, không đảm bảo với `swift run`.
 - **ADR:** 001, 013.
+- **Ký bằng chứng chỉ tự tạo (ADR-023):** chứng chỉ tự ký không được Gatekeeper công nhận (không ảnh hưởng app build tại máy, không bị quarantine). Item Keychain tạo khi còn ký ad-hoc mang ACL cũ nên lần đầu sau khi đổi có thể hỏi quyền một lần (chọn Luôn cho phép). Mất/xoá chứng chỉ thì build quay về ad-hoc. Makefile mở rộng `$` trong `SIGN_IDENTITY=`: tên có `$` phải đặt bằng biến môi trường `SSHDESK_SIGN_IDENTITY`. Chưa thử thật trên máy. **ADR:** 023.
 
 ### A14. Phụ thuộc vào Warp, OpenSSH, Windows App
 - **Mô tả:** app chỉ biết "đã yêu cầu mở Warp", không biết Warp có thực sự mở tab. Hành vi theo OpenSSH 10.3p1 / Warp 0.2026.10.14 / Windows App 11.4.0 đã kiểm tra; `scp -O` chưa thử.
@@ -103,6 +104,9 @@ Chưa chạy với server Linux thật và chưa duyệt giao diện. **ADR:** 0
 
 ### B5. Windows App
 Chưa biết Windows App có nhớ password cho file `.rdp` mở ngoài không (người dùng báo là không); chưa thử SSH tunnel cho RDP (lệch tên chứng chỉ); `.rdp` trên Mac chưa có tài liệu chính thức. **ADR:** 017, 018.
+
+### B9. Agent ngoài (IdentityAgent)
+Chưa cài/thử thật với 1Password, Bitwarden, Secretive. Đường dẫn socket Secretive (`~/Library/Containers/com.maxgoedjen.Secretive.SecretAgent/Data/socket.ssh`) **chưa có nguồn chính thức**; Bitwarden bản App Store dùng đường dẫn khác, phải chọn Tuỳ chỉnh. Agent đòi Touch ID/xác nhận mà kết nối chạy `BatchMode` (Project Analyst, Monitor) có thể bị timeout hoặc thất bại vì không có ai bấm xác nhận kịp. Socket không tồn tại chỉ cảnh báo trong form, không chặn lưu. **ADR:** 024.
 
 ### B6. Giao diện
 Chưa chạy thử: ⌘F focus, Return mở Warp, sidebar disabled, dark/light, bảng host tự dựng (ScrollView + LazyVStack) với phím/double-click. **ADR:** 012, 015.

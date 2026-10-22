@@ -40,7 +40,7 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 
 **E1 — SSH Keys.** Liệt kê key; tạo key ed25519 có/không passphrase (không ghi đè file có sẵn); "Cài key…" lên server test bằng password, sau đó đăng nhập bằng key; đề nghị đổi host sang key.
 
-**E2 — Password Keychain + askpass.** Lưu password cho host; Mở Warp phải đăng nhập tự động; hộp thoại Keychain có hiện không (ký ad-hoc có thể hỏi lại sau mỗi lần build); host key mới/MFA vẫn hỏi trên tty; host có bastion không tự điền; sai password không lặp lại.
+**E2 — Password Keychain + askpass.** Lưu password cho host; Mở Warp phải đăng nhập tự động; hộp thoại Keychain có hiện không (ký ad-hoc có thể hỏi lại sau mỗi lần build; ký bằng chứng chỉ thì xem K1); host key mới/MFA vẫn hỏi trên tty; host có bastion không tự điền; sai password không lặp lại.
 
 **E3 — Port forward.** Thêm forward, Mở: trạng thái Đang kết nối → Đang chạy, truy cập `127.0.0.1:<lp>` được; cổng local đang bận báo đúng; Dừng; ngắt mạng thì hiện Lỗi + Chạy lại; thoát app dừng hết tunnel.
 
@@ -51,5 +51,9 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 **H1/H2 — Máy Windows.** Tạo host Windows, Mở Windows App: cửa sổ tên theo tên file, `username` điền sẵn, đăng nhập được. H2: lưu mật khẩu, mở, dán (⌘V), clipboard tự xoá sau thời gian cấu hình; copy thứ khác trong thời gian đó thì không bị xoá.
 
 **D1 — Xuất/nhập.** Xuất tất cả và chỉ thư mục đang chọn; mở file kiểm tra không có password/credentialReference; nhập lại: xem trước (mới/trùng/lỗi), Bỏ qua và Nhập thành bản sao, jump host được ánh xạ lại.
+
+**K1 — Ký bằng chứng chỉ (ADR-023).** Tạo chứng chỉ theo README. (1) `make install SIGN_IDENTITY="SSH Desk Local"`, chạy `codesign -d -r- "/Applications/SSH Desk.app"` và ghi lại dòng designated requirement. (2) Build + cài lần hai, chạy lại lệnh: DR phải giống hệt lần một (ad-hoc thì đổi). (3) Lưu password cho một host, mở Warp (askpass đăng nhập); build lại, mở Warp lần nữa: không hộp thoại Keychain hỏi lại (lần đầu sau khi đổi từ ad-hoc có thể hỏi một lần, chọn Luôn cho phép). (4) Thử `SIGN_IDENTITY="không-tồn-tại"`: build vẫn xong, có cảnh báo ký ad-hoc.
+
+**K2 — IdentityAgent (ADR-024).** Cần đã cài 1Password và bật SSH agent. (1) Sửa host managed → Nâng cao → Agent: 1Password, lưu. (2) Kiểm config sinh ra: `ssh -G -F "$HOME/Library/Application Support/SSHDesk/ssh/config" sshdesk-<uuid> | grep -i identityagent` phải ra đường dẫn socket 1Password. (3) Màn SSH Keys → thẻ "Key trong agent" liệt kê public key. (4) Mở Warp tới server test dùng key trong agent (IdentityFile trống). (5) Đặt mặc định ở Cài đặt → SSH config, host để "Theo mặc định": `ssh -G` ra cùng giá trị; đổi sang "Hệ thống": không còn dòng identityagent do app ghi. (6) Host imported/Windows: không có picker agent. Bitwarden/Secretive: chỉ thử nếu có cài.
 
 **D4 / D2 (đang hoàn thiện).** Cài đặt mở bằng ⌘, và từ sidebar; mỗi nhóm lưu và áp đúng sau khi mở lại; "Xoá mọi mật khẩu đã lưu" có xác nhận. Thoát (⌘Q) khi còn job/tunnel/Monitor/Analyst: hộp xác nhận liệt kê đúng từng loại; empty state mọi màn; phím tắt hiện trong menu.

@@ -13,7 +13,17 @@ App macOS native (dùng cá nhân) để quản lý hồ sơ máy chủ, mở SS
 ```
 make install
 ```
-Lệnh này build `.app` (ký ad-hoc, không notarize) rồi cài vào `/Applications/SSH Desk.app`. **Phải thoát app (⌘Q) trước**, nếu app đang chạy lệnh sẽ dừng. Sau đó mở bằng icon (Launchpad/Spotlight/Dock). Chạy lại `make install` để cập nhật.
+Lệnh này build `.app` (mặc định ký ad-hoc, không notarize; nên ký bằng chứng chỉ của bạn, xem mục dưới) rồi cài vào `/Applications/SSH Desk.app`. **Phải thoát app (⌘Q) trước**, nếu app đang chạy lệnh sẽ dừng. Sau đó mở bằng icon (Launchpad/Spotlight/Dock). Chạy lại `make install` để cập nhật.
+
+### Ký app bằng chứng chỉ của bạn (khuyến nghị)
+**Vì sao:** ký ad-hoc làm chữ ký app đổi sau mỗi lần build, nên Keychain hỏi lại quyền đọc password đã lưu sau mỗi lần `make install`. Ký bằng một chứng chỉ cố định thì chữ ký ổn định. App **không** tự tạo chứng chỉ và không sửa Keychain; bạn tự làm các bước sau (một lần):
+1. Mở Keychain Access → menu Keychain Access → Certificate Assistant → Create a Certificate…
+2. Name: ví dụ `SSH Desk Local`; Identity Type: Self Signed Root; Certificate Type: Code Signing. Tạo xong.
+3. Nếu `codesign` báo chứng chỉ không tin cậy: mở chứng chỉ → Trust → Code Signing: Always Trust.
+4. Kiểm tra: `security find-identity -p codesigning` (phải thấy tên chứng chỉ).
+5. Build: `make install SIGN_IDENTITY="SSH Desk Local"`, hoặc `export SSHDESK_SIGN_IDENTITY="SSH Desk Local"` rồi `make install`.
+
+Lưu ý: tên chứa `$` thì dùng biến môi trường (make sẽ mở rộng `$`). Hai chứng chỉ trùng tên thì dùng mã SHA-1 của chứng chỉ thay cho tên. Không tìm thấy identity thì build ký ad-hoc và in cảnh báo (không lỗi). Lần đầu sau khi đổi từ ad-hoc sang chứng chỉ, Keychain có thể hỏi quyền một lần cho password đã lưu từ trước: chọn "Luôn cho phép" (Always Allow). Chưa thử thật trên máy (xem [KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md)).
 
 Các lệnh khác: `make check` (lint + build + test), `make run`, `make app`. Xem [docs/TESTING.md](docs/TESTING.md).
 
@@ -21,6 +31,7 @@ Các lệnh khác: `make check` (lint + build + test), `make run`, `make app`. X
 - **Máy chủ + thư mục:** thêm/sửa/xoá/nhân bản, tìm kiếm, môi trường (DEV/UAT/STG/PROD/OTHER), yêu thích, bastion (ProxyJump), import alias có sẵn từ `~/.ssh/config` (chỉ đọc). Thư mục ở sidebar, kéo host vào thư mục.
 - **Mở Warp:** sinh Tab Config và mở tab Warp chạy `ssh`; không có Warp thì Copy lệnh SSH. Click 1 lần = chọn, double-click / Return = mở.
 - **Tự đăng nhập bằng password:** tuỳ chọn lưu password trong Keychain cho từng host; Warp đăng nhập qua helper `SSH_ASKPASS` (env chỉ chứa tham chiếu, không chứa password).
+- **Agent ngoài (1Password, Bitwarden, Secretive):** chọn agent ở form host (mục Nâng cao) hoặc đặt mặc định trong Cài đặt → SSH config. App chỉ ghi `IdentityAgent "<socket>"` vào config của app, không đọc private key. Với agent ngoài nên để IdentityFile trống, hoặc trỏ tới file `.pub` của key nằm trong agent. Màn SSH Keys có thẻ "Key trong agent" (liệt kê public key bằng `ssh-add -L`). Chỉ áp dụng cho host managed loại SSH. Chưa thử với agent thật.
 - **Truyền file kiểu Xftp:** hai khung (Mac | server), tab cho từng server, kéo thả, hàng đợi (huỷ, thử lại, ghi đè/đổi tên/bỏ qua), tạo thư mục / đổi tên / xoá trên server. Dùng `scp` (giao thức SFTP) và `sftp` qua một kết nối ControlMaster mỗi tab.
 - **SSH Keys:** liệt kê key trong `~/.ssh` (chỉ đọc `*.pub`), tạo key mới, "Cài key lên server" (`ssh-copy-id`).
 - **Port forward (-L):** lưu danh sách forward theo host, Mở/Dừng tunnel riêng, hiển thị trạng thái.

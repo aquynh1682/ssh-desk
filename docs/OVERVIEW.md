@@ -3,7 +3,7 @@
 Bản đọc nhanh. Quyết định đầy đủ và lý do: [architecture.md](architecture.md) (ADR). Khi hai nơi khác nhau, `architecture.md` thắng.
 
 ## Stack
-Swift 6, SwiftUI (+ AppKit khi cần), SwiftPM, SQLite hệ thống (`import SQLite3`), không dependency ngoài, không App Sandbox. Không có `.xcodeproj`; `.app` đóng gói bằng `scripts/build-app.sh` (ký ad-hoc). UI không dùng `@State` mà dùng `@Local` (ADR-009).
+Swift 6, SwiftUI (+ AppKit khi cần), SwiftPM, SQLite hệ thống (`import SQLite3`), không dependency ngoài, không App Sandbox. Không có `.xcodeproj`; `.app` đóng gói bằng `scripts/build-app.sh` (ký ad-hoc, hoặc bằng chứng chỉ của bạn qua `SSHDESK_SIGN_IDENTITY`, ADR-023). UI không dùng `@State` mà dùng `@Local` (ADR-009).
 
 ## Module trong `Sources/`
 | Target | Vai trò |
@@ -29,6 +29,10 @@ Thư mục trong `SSHDeskCore/`:
 
 ## Luồng chính
 **SSH config riêng + Include (ADR-006).** App sinh `~/Library/Application Support/SSHDesk/ssh/config` từ DB: mỗi host managed là `Host sshdesk-<uuid>`, cuối file là `Match all` + `Include <~/.ssh/config>` (host của app đứng trước nên giá trị của app thắng; alias của bạn vẫn resolve). Mọi kết nối là `/usr/bin/ssh -F <config tuyệt đối> <alias>` (`scp`/`sftp` cũng `-F`). Giá trị được quote và cấm newline/ký tự điều khiển.
+
+**IdentityAgent (ADR-024).** `HostProfile.identityAgent` (nil = theo mặc định `ssh.default_identity_agent` trong Cài đặt; rỗng = hệ thống, không ghi directive). `SSHConfigWriter` ghi `IdentityAgent "<giá trị hiệu lực>"` (host ?? mặc định) trong Host block; chữ `SSH_AUTH_SOCK` ghi nguyên văn. Validator (`SSHConfig/IdentityAgent.swift`): phải bắt đầu `/`, `~/` hoặc đúng `SSH_AUTH_SOCK`, cấm ký tự điều khiển, `%`, `$`, tối đa 1024 byte. Host imported và Windows không áp dụng. `Keys/AgentKeyLister` chạy `ssh-add -L` với `SSH_AUTH_SOCK` trong env process con để liệt kê public key (không đọc private key).
+
+**Ký app (ADR-023).** `build-app.sh` đọc `SSHDESK_SIGN_IDENTITY` (Makefile: `SIGN_IDENTITY`). Có identity: ký helper trước rồi app bằng `codesign --force --sign` với identifier cố định (`local.sshdesk.app`, `.ctty`, `.askpass`, `.cli`), không `--deep`, in `codesign -d -r-`. Không có hoặc không tìm thấy: ký ad-hoc kèm cảnh báo. Designated requirement ổn định giúp ACL Keychain không đổi giữa các lần build.
 
 **Warp Tab Config (ADR-007).** Ghi `~/.warp/tab_configs/sshdesk_<uuid>.toml` (một pane, `commands` = lệnh ssh đã quote cho zsh), mở bằng `warp://tab_config/sshdesk_<uuid>`. App chỉ biết "đã yêu cầu mở"; lỗi thì Copy lệnh.
 
@@ -58,6 +62,7 @@ Thư mục trong `SSHDeskCore/`:
 | v5 | `hosts.kind` + cột `rdp_*` (máy Windows) | 017 |
 | v6 | `port_forwards` | 011 |
 | v7 | `settings(key, value)` — đang hoàn thiện | 021 |
+| v8 | `hosts.identity_agent` | 024 |
 
 ## Danh sách ADR
 Chi tiết trong [architecture.md](architecture.md).
@@ -86,3 +91,5 @@ Chi tiết trong [architecture.md](architecture.md).
 | 020 | Xuất/nhập danh sách máy | JSON không secret, xem trước, transaction. |
 | 021 | Màn Cài đặt | Bảng `settings`, `AppSettings` có mặc định + kẹp (đang hoàn thiện). |
 | 022 | Vòng đời app | Xác nhận khi thoát, empty state, phím tắt (đang hoàn thiện). |
+| 023 | Ký app bằng chứng chỉ ổn định | `SSHDESK_SIGN_IDENTITY`, identifier cố định, fallback ad-hoc. |
+| 024 | Agent ngoài qua `IdentityAgent` | Cột `identity_agent`, preset 1Password/Bitwarden/Secretive, validator, liệt kê key agent. |
