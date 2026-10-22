@@ -12,6 +12,7 @@ Swift 6, SwiftUI (+ AppKit khi cần), SwiftPM, SQLite hệ thống (`import SQL
 | `SSHDesk` | UI SwiftUI, mỏng, chỉ gọi vào Core. |
 | `AskpassKit` | Logic phân loại prompt dùng chung cho helper askpass (có bảng test). |
 | `sshdesk-askpass` | Executable helper trong bundle: đọc Keychain theo tham chiếu, in password cho `ssh`. |
+| `sshdesk-cli` | CLI `sshdesk` (list/open/help), chỉ đọc DB, nhờ app mở host qua `sshdesk://`. |
 | `sshdesk-ctty` | Executable helper gán controlling tty rồi `execv` (posix_spawn trên macOS không tự cấp). |
 
 Thư mục trong `SSHDeskCore/`:
@@ -41,6 +42,8 @@ Thư mục trong `SSHDeskCore/`:
 **ControlMaster + SessionPool (ADR-013, 016, 019).** Mỗi host một master: `ssh -M -N -o ControlPath=/tmp/sshdesk-<uid>/<hostID> -o ControlPersist=no`. sftp, scp, lệnh Analyst và Monitor chạy qua master đó. `SessionPool` dùng chung giữa Truyền file / Analyst / Monitor (một master/host; phiên do Analyst/Monitor tự mở thì tự đóng).
 
 **scp / sftp (ADR-008, 013).** `scp` (giao thức SFTP, không `-O`) qua PTY cho truyền file; `sftp -b -` cho liệt kê/mkdir/rename/rm. Download ghi `.part` rồi rename độc quyền. Job chưa xong khi khởi động lại thành "Bị gián đoạn".
+
+**CLI + URL scheme (ADR-025).** `sshdesk` (executable `sshdesk-cli`, copy vào `Contents/Helpers/sshdesk`) mở DB `READONLY` để `list`; không ghi DB/SSH config, không đọc Keychain. `open`: CLI giải host (UUID, rồi alias, rồi tên hiển thị; mơ hồ thì lỗi) -> ghi file request `~/Library/Application Support/SSHDesk/requests/<uuid>.json` (0600, thư mục 0700; chỉ `{hostID, createdAt}`) -> mở `sshdesk://cli?request=<uuid>` bằng NSWorkspace -> app đọc file bằng `O_NOFOLLOW`, xoá ngay, bỏ nếu quá 30 giây. Mở host như nút Mở Warp (cùng `ConnectionService`); CLI chỉ xác nhận với PROD. URL ngoài (`sshdesk://open?id=|name=`) không có file request nên **luôn** hộp xác nhận, chỉ nhận đúng một tham số. App xếp hàng URL (tối đa 4) cho tới khi sẵn sàng. Code: `SSHDeskCore/CLI/`, `Sources/sshdesk-cli/`.
 
 **Project Analyst (ADR-016).** Whitelist `ss -Htanp`, `ip -o addr show`, `hostname`; dựng cạnh A→B:port từ kết nối ESTAB tới cổng B đang LISTEN; probe TCP từ server nguồn; lưu lịch sử (migration v4). Chỉ Linux, không sudo.
 
@@ -93,3 +96,4 @@ Chi tiết trong [architecture.md](architecture.md).
 | 022 | Vòng đời app | Xác nhận khi thoát, empty state, phím tắt (đang hoàn thiện). |
 | 023 | Ký app bằng chứng chỉ ổn định | `SSHDESK_SIGN_IDENTITY`, identifier cố định, fallback ad-hoc. |
 | 024 | Agent ngoài qua `IdentityAgent` | Cột `identity_agent`, preset 1Password/Bitwarden/Secretive, validator, liệt kê key agent. |
+| 025 | CLI `sshdesk` + URL scheme | DB chỉ đọc, file request 0600 hết hạn 30 giây, URL ngoài luôn xác nhận. |

@@ -38,6 +38,7 @@ Các lệnh khác: `make check` (lint + build + test), `make run`, `make app`. X
 - **Project Analyst:** quét một thư mục server (Linux), dựng bản đồ kết nối giữa các server, thử kết nối TCP, lưu lịch sử, xuất báo cáo Markdown/CSV.
 - **Monitor:** lưới thẻ CPU / RAM / swap / đĩa / load / uptime theo thư mục (Linux).
 - **Máy Windows:** khai báo host RDP, mở bằng Windows App qua file `.rdp`; tuỳ chọn copy mật khẩu lên clipboard khi mở (tự xoá).
+- **CLI `sshdesk` + liên kết `sshdesk://`:** liệt kê và mở host từ terminal, Alfred, Raycast (mục bên dưới). Chưa thử tay.
 - **Xuất / nhập:** danh sách máy chủ ra file JSON `*.sshdesk.json` (không có secret) và nhập lại có xem trước.
 - **Cài đặt (đang hoàn thiện):** ⌘, hoặc mục "Cài đặt" ở sidebar — mặc định Warp, truyền file, SSH config, bảo mật, Analyst, Monitor, Windows App, dữ liệu.
 - **Vòng đời app, phím tắt (đang hoàn thiện):** hỏi xác nhận khi thoát lúc còn job/tunnel/Monitor/Analyst; ⌘N, ⌘F, ⌘D, ⌘Return, ⌘E, ⌘1…⌘6.
@@ -60,6 +61,46 @@ Tất cả logic có test tự động. Nhưng nhiều tính năng mới chỉ c
 | Logo/giao diện (UI1) | — | Người dùng xem app |
 
 Kịch bản thử tay: [docs/TESTING.md](docs/TESTING.md). Giới hạn đã biết: [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md).
+
+## Dòng lệnh `sshdesk`
+Sau `make install`, CLI nằm ở `/Applications/SSH Desk.app/Contents/Helpers/sshdesk`. App **không** sửa PATH; bạn tự tạo symlink (một lần):
+```
+mkdir -p ~/bin && ln -s "/Applications/SSH Desk.app/Contents/Helpers/sshdesk" ~/bin/sshdesk
+```
+rồi thêm `~/bin` vào PATH (vd `export PATH="$HOME/bin:$PATH"` trong `~/.zshrc`).
+
+| Lệnh | Việc |
+|---|---|
+| `sshdesk list [--folder <tên>] [--json]` | Liệt kê máy chủ (JSON: `id, name, alias, folder, environment, kind, hostName, port, user`). |
+| `sshdesk open <id\|alias\|tên>` | Nhờ app mở host trong Warp. Khớp chính xác theo thứ tự id, alias imported, tên hiển thị; nhiều host khớp thì báo lỗi liệt kê id. |
+| `sshdesk help` | Trợ giúp. |
+
+Exit code: 0 = thành công (kể cả `help`), 1 = lỗi chung (chưa có DB, schema lệch, không mở được app), 2 = tham số sai, 3 = không giải được host (không thấy, nhiều host khớp, hoặc máy Windows: CLI v1 chưa hỗ trợ). Host môi trường PROD luôn hiện hộp xác nhận trong app; host khác mở ngay. CLI chỉ mở DB ở chế độ chỉ đọc, không ghi gì, không đọc Keychain/mật khẩu; không có lệnh nào nhận mật khẩu hay tham số `ssh` tuỳ ý. Chưa thử end-to-end trên máy thật (xem [KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md) B10).
+
+## Liên kết `sshdesk://`
+- `sshdesk://open?id=<uuid>` hoặc `sshdesk://open?name=<tên hoặc alias>` (chỉ đúng một tham số; tham số khác, giá trị quá 256 ký tự hoặc có ký tự điều khiển bị từ chối).
+- **Luôn** hiện hộp xác nhận (tên, môi trường, user@host) trước khi mở, kể cả host không PROD. Chỉ áp dụng cho máy SSH.
+- Thử: `open 'sshdesk://open?name=My%20Server'` (mã hoá khoảng trắng thành `%20`).
+
+## Alfred / Raycast
+Chỉ có hướng dẫn, không có extension.
+
+**Alfred (Script Filter).** Tạo workflow: Script Filter (Language `/bin/zsh`, with input as argv), nối tới Run Script chạy `~/bin/sshdesk open "{query}"` (Alfred không dùng PATH của bạn nên ghi đường dẫn đầy đủ). Script Filter dùng `/usr/bin/python3` (nếu máy chưa có thì dùng `jq`, xem dưới):
+```
+~/bin/sshdesk list --json | /usr/bin/python3 -c '
+import sys, json
+q = (sys.argv[1] if len(sys.argv) > 1 else "").lower()
+items = [{"title": h["name"],
+          "subtitle": "%s  %s@%s" % (h["environment"], h["user"], h["hostName"]),
+          "arg": h["id"]}
+         for h in json.load(sys.stdin)
+         if q in (h["name"] + " " + (h["alias"] or "")).lower()]
+print(json.dumps({"items": items}))
+' "$1"
+```
+Với `jq`: `~/bin/sshdesk list --json | jq --arg q "$1" '{items: [.[] | select((.name + " " + (.alias // "")) | ascii_downcase | contains($q | ascii_downcase)) | {title: .name, subtitle: "\(.environment)  \(.user)@\(.hostName)", arg: .id}]}'`. `arg` là id nên `open` khớp chính xác.
+
+**Raycast.** Tạo Script Command (bash) với tham số văn bản, thân script: `~/bin/sshdesk open "$1"` (đặt `#!/bin/zsh`, `@raycast.mode silent`). Ví dụ hai script chưa chạy thử trên máy thật.
 
 ## Dữ liệu lưu ở đâu
 | Nội dung | Vị trí |

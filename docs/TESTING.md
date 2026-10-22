@@ -57,3 +57,12 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 **K2 — IdentityAgent (ADR-024).** Cần đã cài 1Password và bật SSH agent. (1) Sửa host managed → Nâng cao → Agent: 1Password, lưu. (2) Kiểm config sinh ra: `ssh -G -F "$HOME/Library/Application Support/SSHDesk/ssh/config" sshdesk-<uuid> | grep -i identityagent` phải ra đường dẫn socket 1Password. (3) Màn SSH Keys → thẻ "Key trong agent" liệt kê public key. (4) Mở Warp tới server test dùng key trong agent (IdentityFile trống). (5) Đặt mặc định ở Cài đặt → SSH config, host để "Theo mặc định": `ssh -G` ra cùng giá trị; đổi sang "Hệ thống": không còn dòng identityagent do app ghi. (6) Host imported/Windows: không có picker agent. Bitwarden/Secretive: chỉ thử nếu có cài.
 
 **D4 / D2 (đang hoàn thiện).** Cài đặt mở bằng ⌘, và từ sidebar; mỗi nhóm lưu và áp đúng sau khi mở lại; "Xoá mọi mật khẩu đã lưu" có xác nhận. Thoát (⌘Q) khi còn job/tunnel/Monitor/Analyst: hộp xác nhận liệt kê đúng từng loại; empty state mọi màn; phím tắt hiện trong menu.
+
+**K3 — CLI và `sshdesk://` (ADR-025).** Cần `make install` (thoát app trước), mở app một lần để LaunchServices đăng ký scheme, tạo symlink theo README.
+1. Khi app **đang chạy**: `open 'sshdesk://open?name=<tên host SSH>'` -> hộp xác nhận (tên, môi trường, user@host) -> xác nhận thì Warp mở; Huỷ thì không mở. Ghi lại có mở thừa cửa sổ app không.
+2. Thoát app (⌘Q), chạy lại lệnh trên: app tự khởi động, hộp xác nhận hiện; kiểm tra có **mở thừa cửa sổ** SwiftUI không.
+3. `sshdesk open <tên>` với host không PROD: mở ngay, không hỏi. Host PROD: hộp xác nhận trong app (kiểu cảnh báo). Thử cả khi app tắt.
+4. URL lạ phải bị từ chối và báo: `open 'sshdesk://open?name=x&cmd=ls'`, `sshdesk://open` không tham số, `sshdesk://cli?request=khong-ton-tai`, giá trị quá 256 ký tự. Host Windows: "chưa hỗ trợ" (exit 3).
+5. `sshdesk list`, `sshdesk list --folder <tên>`, `sshdesk list --json` (kiểm tra JSON hợp lệ, không có credentialReference/ghi chú); `sshdesk bogus` -> exit 2; `echo $?` sau mỗi lệnh.
+6. Thư mục `~/Library/Application Support/SSHDesk/requests/` không còn file sau khi mở. Chạy `sshdesk list` khi app đang ghi DB: không lỗi khoá lâu.
+7. Alfred/Raycast: thử script trong README nếu dùng.

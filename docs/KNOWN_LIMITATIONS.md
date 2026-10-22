@@ -88,6 +88,12 @@ Gom từ mục "Rủi ro chấp nhận" và "Chưa kiểm chứng" trong [archit
 - **Mô tả:** SQLite không mã hoá (không chứa secret). Lịch sử Analyst giữ N lần mỗi thư mục (mặc định 50); đổi tên thư mục không đổi tên trong lịch sử cũ. Xuất JSON không chứa secret nhưng chứa host/user/đường dẫn key, nên coi là nhạy cảm vừa phải.
 - **ADR:** 005, 016, 020.
 
+### A16. CLI/URL: request file giả mạo, hết hạn, không có Windows
+- Process cục bộ cùng user ghi được file request trong thư mục app thì **bỏ qua hộp xác nhận cho host không PROD** (PROD vẫn hỏi). Chấp nhận vì process đó vốn chạy được `ssh` trực tiếp, không mở thêm quyền. URL từ web luôn xác nhận vì không tạo được file request.
+- Request hết hạn sau 30 giây: nếu app khởi động chậm hơn (hoặc `createdAt` ở tương lai quá 5 giây) thì bị bỏ, chạy lại lệnh.
+- CLI v1 không hỗ trợ máy Windows (exit 3) và không có lệnh nào ngoài `list`/`open`/`help`.
+**ADR:** 025.
+
 ## B. Chưa kiểm chứng (với hệ thống thật)
 
 ### B1. Truyền file với server thật
@@ -116,3 +122,6 @@ Chưa thử tay với server thật. **ADR:** 011, 014, 020.
 
 ### B8. Cài đặt (D4) và vòng đời app (D2) — đang hoàn thiện
 Chưa xong lúc viết tài liệu; mục tương ứng sẽ cập nhật khi hoàn tất. **ADR:** 021, 022.
+
+### B10. CLI `sshdesk` và URL scheme (ADR-025)
+Chưa thử trên máy thật: (1) scheme `sshdesk://` có đăng ký với LaunchServices sau `make install` (có thể phải mở app một lần); (2) Apple Event khi app tắt hoặc đang chạy; SwiftUI `WindowGroup` có thể mở thêm cửa sổ; (3) `sshdesk open` end-to-end; (4) nhánh dự phòng mở DB `mode=ro` / `immutable=1` có thật sự cần không (`immutable` chỉ dùng khi không có `-wal`). Script Alfred/Raycast trong README chưa chạy thử. **Tránh/làm:** kịch bản K3 trong [TESTING.md](TESTING.md). **ADR:** 025.
