@@ -49,11 +49,12 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [x] G1 Core: whitelist lệnh, chạy lệnh qua master, parser `ss`/`ip addr`, dựng topology, probe, xuất báo cáo (thuần, chưa DB)
 - [~] G2 (code xong, PM duyệt; chờ thử với server Linux test) DB lịch sử chạy + UI (sidebar PROJECTS, tab Servers/Bản đồ/Kết quả/Lịch sử, graph, panel chi tiết) — sau khi xong thư mục server
 
-- [ ] G3 Sửa UI Analyst theo phản hồi: khung Kết quả quá to/đè bản đồ, nhãn cạnh chồng nhau, thẻ server ưu tiên port có cạnh vào, ẩn/đánh dấu LISTEN loopback (:53 systemd-resolved)
+- [~] G3 (code xong, PM duyệt; chờ người dùng xem) Sửa UI Analyst theo phản hồi: khung Kết quả quá to/đè bản đồ, nhãn cạnh chồng nhau, thẻ server ưu tiên port có cạnh vào, ẩn/đánh dấu LISTEN loopback (:53 systemd-resolved)
 
 ## Bước H — Máy Windows (ADR-017, người dùng yêu cầu)
 - [x] H0 (người dùng) thử file .rdp thật (UTF-8 CRLF mở + đăng nhập được) với Windows App: host + user có điền sẵn không
 - [~] H1 (code xong, PM duyệt; chờ thử tay) Loại máy Windows (RDP): model + migration, form, sinh .rdp, Mở Windows App, ẩn chức năng SSH
+- [~] H2 (code xong, PM duyệt; chờ thử tay) Mật khẩu Windows: lưu Keychain, copy tự động khi mở (ADR-018)
 
 ## Bước D — Hoàn thiện
 - [ ] D1 Keychain CredentialStore, import/export metadata
