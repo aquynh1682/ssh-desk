@@ -18,6 +18,8 @@ let package = Package(
         .executableTarget(name: "sshdesk-ctty"),
         // Helper SSH_ASKPASS: chỉ phụ thuộc Darwin + Security (không AppKit/SwiftUI).
         .executableTarget(name: "sshdesk-askpass", dependencies: ["AskpassKit"]),
+        // CLI `sshdesk` (ADR-025): chỉ đọc DB, ghi file yêu cầu. Đặt tên khác `SSHDesk` vì APFS không phân biệt hoa thường.
+        .executableTarget(name: "sshdesk-cli", dependencies: ["SSHDeskCore"]),
         .testTarget(
             name: "SSHDeskCoreTests",
             dependencies: ["SSHDeskCore", "AskpassKit", "sshdesk-ctty", "sshdesk-askpass"]),

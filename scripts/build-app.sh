@@ -17,6 +17,11 @@ cp "$BIN_DIR/sshdesk-ctty" "$APP/Contents/MacOS/sshdesk-ctty"
 # Helper SSH_ASKPASS (đăng nhập bằng password đã lưu trong Keychain); ConnectionService tìm cạnh executable chính.
 cp "$BIN_DIR/sshdesk-askpass" "$APP/Contents/MacOS/sshdesk-askpass"
 
+# CLI `sshdesk` (ADR-025): target SwiftPM tên sshdesk-cli, cài thành Contents/Helpers/sshdesk (không đặt cạnh
+# SSHDesk trong MacOS vì APFS không phân biệt hoa thường). Người dùng tự tạo symlink vào PATH.
+mkdir -p "$APP/Contents/Helpers"
+cp "$BIN_DIR/sshdesk-cli" "$APP/Contents/Helpers/sshdesk"
+
 # Resource bundle của SwiftPM (logo ở thanh tiêu đề). AppLogo.swift tìm ở Contents/Resources.
 mkdir -p "$APP/Contents/Resources"
 for b in "$BIN_DIR"/*.bundle; do
@@ -65,6 +70,18 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <!-- URL scheme sshdesk:// (ADR-025). App chỉ nhận open?id|name và cli?request, luôn qua kiểm tra trong Core. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>local.sshdesk.url</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>sshdesk</string>
+            </array>
+        </dict>
+    </array>
     <!-- Kiểu kéo thả nội bộ giữa hai khung của màn Truyền file (BrowserDragPayload.typeIdentifier). -->
     <key>UTExportedTypeDeclarations</key>
     <array>
@@ -143,6 +160,7 @@ sign() { # <đường dẫn> <identifier cố định>
 # Helper trước, app sau.
 sign "$APP/Contents/MacOS/sshdesk-ctty" local.sshdesk.ctty
 sign "$APP/Contents/MacOS/sshdesk-askpass" local.sshdesk.askpass
+sign "$APP/Contents/Helpers/sshdesk" local.sshdesk.cli
 sign "$APP" local.sshdesk.app
 if [ -n "$SIGN_ID" ]; then
     echo "Designated requirement:"

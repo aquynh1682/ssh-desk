@@ -8,6 +8,10 @@ public enum DatabaseError: Error, Equatable {
     case newerSchema(found: Int, supported: Int)
     case sqlite(code: Int32, message: String)
     case cannotCreate(String)
+    /// Mở chỉ đọc nhưng file không tồn tại (không bao giờ tạo mới ở chế độ này).
+    case notFound(String)
+    /// Mở chỉ đọc nhưng schema_version khác phiên bản bản này biết (cũ hơn hoặc mới hơn).
+    case schemaMismatch(found: Int, expected: Int)
 }
 
 enum SQLValue: Equatable {
@@ -225,6 +229,68 @@ public final class Database: @unchecked Sendable {
             self.handle = nil
             throw error
         }
+    }
+
+    /// Kết nối chỉ đọc cho CLI (ADR-025). Chỉ nhận handle đã mở READONLY.
+    private init(readOnlyHandle: OpaquePointer) {
+        self.handle = readOnlyHandle
+    }
+
+    /// Mở DB **chỉ đọc**: `SQLITE_OPEN_READONLY`, `busy_timeout` 2000 ms, không migration, không bật WAL,
+    /// không ghi gì. File không có -> `.notFound`; schema_version khác `currentSchemaVersion` -> `.schemaMismatch`.
+    public static func openReadOnly(url: URL) throws -> Database {
+        let path = url.path
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw DatabaseError.notFound(path)
+        }
+        try requireSQLiteHeader(path: path)
+        // DB WAL mà mọi kết nối ghi đã đóng không còn -wal/-shm: mở READONLY thường có thể CANTOPEN
+        // (không tạo được -shm). Thử lần lượt: thường -> URI mode=ro -> immutable=1 (chỉ khi không có -wal,
+        // vì immutable bỏ qua WAL). Không bước nào ghi hay tạo file.
+        let encoded =
+            path.addingPercentEncoding(
+                withAllowedCharacters: CharacterSet(
+                    charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/-._~")
+            ) ?? path
+        var attempts: [(String, Int32)] = [
+            (path, SQLITE_OPEN_READONLY),
+            ("file:\(encoded)?mode=ro", SQLITE_OPEN_READONLY | SQLITE_OPEN_URI),
+        ]
+        if !FileManager.default.fileExists(atPath: path + "-wal") {
+            attempts.append(("file:\(encoded)?immutable=1", SQLITE_OPEN_READONLY | SQLITE_OPEN_URI))
+        }
+        var lastError: DatabaseError = .cannotCreate(path)
+        for (target, flags) in attempts {
+            do {
+                return try openVerified(target: target, flags: flags | SQLITE_OPEN_FULLMUTEX)
+            } catch DatabaseError.sqlite(let code, let message)
+                where code == SQLITE_CANTOPEN || code == SQLITE_READONLY
+            {
+                lastError = .sqlite(
+                    code: code,
+                    message: "\(message). Hãy mở SSH Desk một lần (để nó đóng/dọn WAL) hoặc kiểm tra quyền đọc \(path)")
+            }
+        }
+        throw lastError
+    }
+
+    private static func openVerified(target: String, flags: Int32) throws -> Database {
+        var db: OpaquePointer?
+        let rc = sqlite3_open_v2(target, &db, flags, nil)
+        guard rc == SQLITE_OK, let db else {
+            let msg = db.map { String(cString: sqlite3_errmsg($0)) } ?? "open failed"
+            if let db { sqlite3_close(db) }
+            throw DatabaseError.sqlite(code: rc, message: msg)
+        }
+        sqlite3_busy_timeout(db, 2000)
+        let database = Database(readOnlyHandle: db)  // deinit đóng handle nếu các bước sau lỗi
+        let tables = try database.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'")
+        let version = tables.isEmpty ? 0 : try database.schemaVersion()
+        guard version == currentSchemaVersion else {
+            throw DatabaseError.schemaMismatch(found: version, expected: currentSchemaVersion)
+        }
+        return database
     }
 
     deinit {

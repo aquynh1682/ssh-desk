@@ -5,7 +5,27 @@ import SwiftUI
 /// Đảm bảo app chạy như ứng dụng thường (Dock, focus) cả khi chạy từ `swift run`.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Nhận `sshdesk://` bằng Apple Event (chạy được cả khi app đang tắt: URL tới khi khởi động). ADR-025.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        registerURLHandler()
+    }
+
+    private func registerURLHandler() {
+        NSAppleEventManager.shared().setEventHandler(
+            self, andSelector: #selector(handleGetURL(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
+    }
+
+    @objc func handleGetURL(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+        guard let text = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+            let url = URL(string: text)
+        else { return }
+        AppModel.shared.receive(url: url)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Đăng ký lại sau khi SwiftUI dựng xong để chắc handler của ta là handler cuối.
+        registerURLHandler()
         NSApplication.shared.setActivationPolicy(.regular)
         // Chạy bằng `swift run` thì không có AppIcon.icns; đặt icon Dock từ logo đóng gói trong resource.
         if Bundle.main.bundleURL.pathExtension != "app", let logo = AppLogo.image {

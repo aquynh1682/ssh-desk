@@ -145,6 +145,9 @@ final class AppModel {
     @ObservationIgnored lazy var tunnels = TunnelsModel(app: self)
     private var transferRepository: TransferRepository?
     private var eventsTask: Task<Void, Never>?
+    /// URL `sshdesk://` đến trước khi dữ liệu nạp xong (hoặc đang xử lý URL khác) — xếp hàng (ADR-025).
+    var pendingURLs: [URL] = []
+    var isHandlingURLs = false
     private var toastTask: Task<Void, Never>?
 
     /// Dùng chung cho `AppDelegate` (hỏi khi thoát).
@@ -193,6 +196,7 @@ final class AppModel {
             try await startTransfers(database: db, hosts: repo)
             browser = FileBrowserModel(app: self, credentials: autofillCredentials)
             phase = .ready
+            drainPendingURLs()
         } catch {
             phase = .failed(
                 DatabaseFailure(

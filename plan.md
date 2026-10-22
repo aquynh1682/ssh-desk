@@ -71,7 +71,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 ## Bước K — Hướng mở rộng chiến lược (người dùng chọn 2026-10-22, ADR-023..028)
 - [~] K1 (code xong, QA đạt sau sửa, PM duyệt; chờ người dùng tạo chứng chỉ và thử 2 lần make install) Ký app bằng chứng chỉ ổn định qua `SIGN_IDENTITY`/`SSHDESK_SIGN_IDENTITY`, fallback ad-hoc + cảnh báo — ADR-023
 - [~] K2 (code xong, QA đạt, PM duyệt; chờ thử với agent thật) IdentityAgent theo host + mặc định Cài đặt, validate chống chèn directive, migration v8 — ADR-024
-- [ ] K3 (coder) CLI `sshdesk` (list/open/help) + URL scheme `sshdesk://` có xác nhận — ADR-025
+- [~] K3 (code xong, QA đạt sau sửa, PM duyệt; chờ thử URL scheme + `sshdesk open` sau make install) CLI `sshdesk` (list/open/help) + URL scheme `sshdesk://` có xác nhận — ADR-025
 - [ ] K4s (coder) Bộ đăng nhập dùng chung (credential set), migration v9 — ADR-030
 - [x] K4r (researcher) Kiểm chứng đọc/tạo `.xlsx` bằng `unzip -p`/`zip` + XMLParser — ADR-026
 - [ ] K4a (coder) Khung nguồn đồng bộ + hold tự điền + Excel mẫu + XLSX/CSV ghép cột, migration v10 — ADR-026

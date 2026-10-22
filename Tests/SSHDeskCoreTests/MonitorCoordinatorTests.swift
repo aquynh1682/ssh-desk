@@ -154,18 +154,31 @@ struct MonitorCoordinatorTests {
         await c.stop()
     }
 
+    /// Poll tối đa 5 giây tới khi điều kiện đúng.
+    static func waitUntil(_ condition: @Sendable () -> Bool) async -> Bool {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return condition()
+    }
+
     @Test func connectFailureIsNotRetriedAutomatically() async {
         let bad = Self.host("bad")
         let provider = FakeMonitorProvider(
             executors: [:], errors: [bad.id: SessionConnectError.failed("Permission denied")])
         let c = MonitorCoordinator(sessions: provider)
         await c.start(hosts: [bad], interval: 3600)
-        try? await Task.sleep(for: .milliseconds(200))
+        #expect(await Self.waitUntil { provider.requested.count >= 1 })
         #expect(await c.refreshRound())
         #expect(await c.refreshRound())
+        // Không thử lại tự động: chờ thêm một khoảng rồi kiểm số lần yêu cầu không tăng.
+        try? await Task.sleep(for: .milliseconds(300))
         #expect(provider.requested.count == 1)
         await c.retry(hostID: bad.id)
-        try? await Task.sleep(for: .milliseconds(200))
+        #expect(await Self.waitUntil { provider.requested.count >= 2 })
+        try? await Task.sleep(for: .milliseconds(300))
         #expect(provider.requested.count == 2)
         await c.stop()
     }
