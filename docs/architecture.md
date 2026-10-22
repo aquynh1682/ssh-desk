@@ -107,6 +107,12 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
 - Sinh vào Host block của app bằng `LocalForward` (bind `127.0.0.1` mặc định, không mở ra LAN), hoặc chạy phiên forward riêng `ssh -N -L ...` qua PTY runner khi người dùng bấm "Mở tunnel" (có trạng thái chạy/dừng, huỷ theo process group).
 - Kiểm tra port local đang bận trước khi chạy; validate port 1–65535, không cho port < 1024.
 - Không làm remote forward (-R) và không đụng firewall server.
+- **Chi tiết chốt cho E3 (PM 2026-10-22, người dùng yêu cầu làm tiếp):**
+  - **Chỉ dùng phiên tunnel riêng** `ssh -F <cfg> -N -o ExitOnForwardFailure=yes -o ControlMaster=no -o ControlPath=none -L 127.0.0.1:<lp>:<rh>:<rp> -- <alias>` qua PTYProcess; KHÔNG sinh `LocalForward` vào Host block (nếu sinh, mỗi lần Mở Warp cũng bind port → xung đột).
+  - Lưu: bảng `port_forwards(id, host_id FK CASCADE, name, local_port, remote_host, remote_port, created_at)` (migration mới tiếp theo). `remote_host`: hostname/IPv4/IPv6 literal, cấm khoảng trắng, `:`(trừ IPv6 trong `[]`), ký tự điều khiển; mặc định `localhost`. Local port 1024–65535, không trùng giữa các forward của app.
+  - Xác thực: tự điền theo `PasswordAutofillPolicy`; prompt khác qua `AuthPromptCard`. Host Windows không có forward.
+  - Trạng thái: Dừng / Đang kết nối / Đang chạy / Lỗi (lý do từ stderr đã làm sạch, vd port bận). Trước khi chạy thử bind 127.0.0.1:<lp> để báo "port đang bận". Dừng = SIGTERM process group của đúng phiên đó. Thoát app → dừng mọi tunnel. Không tự chạy lại khi rớt (hiện Lỗi + nút Chạy lại).
+  - UI: mục "Port forward" trong chi tiết host (danh sách, thêm/sửa/xoá, Mở/Dừng, copy `127.0.0.1:<lp>`); chỉ báo số tunnel đang chạy ở status bar.
 
 ## ADR-012: Logo + giao diện theo mockup — Đã chốt (người dùng yêu cầu 2026-10-21)
 - Nguồn: `Resources/AppIcon-source.png` (logo), `Resources/Design/main-window-mockup.png` (mockup cửa sổ chính).
@@ -211,4 +217,30 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
 - **Ngoài phạm vi v1:** top tiến trình, lịch sử dài hạn, cảnh báo/thông báo, mạng/IO.
 - **Đã làm (I1+I2, PM duyệt):** `Sources/SSHDeskCore/Monitor/` (MonitorCommand whitelist 3 lệnh, parser, MonitorMath/History/Level, MonitorCoordinator + owner `.monitor`), màn Monitor. PM duyệt các lựa chọn của coder: host **kết nối thất bại/không hỗ trợ không tự thử lại** mỗi chu kỳ (tránh khoá tài khoản khi sai password) — người dùng bấm "Thử lại"; lỗi lệnh (timeout, mất phiên) thử lại vòng sau. Huỷ prompt xác thực = dừng Monitor. df bỏ trùng theo filesystem; thiếu `nproc` → đếm `cpuN`; thiếu `MemAvailable` → `MemFree+Buffers+Cached`. Đổi thư mục/Tiếp tục hỏi lại PROD.
 - Chưa kiểm chứng: chạy thật với server Linux, giao diện.
+
+## ADR-020: Xuất / nhập danh sách máy chủ (D1) — Đã chốt (người dùng yêu cầu làm 2026-10-22)
+- File JSON `*.sshdesk.json`: `{format: "sshdesk-hosts", version: 1, exportedAt, folders: [...], hosts: [...]}`. Host mang mọi metadata (tên, thư mục, môi trường, tag, ghi chú, yêu thích, loại máy, host/port/user, auth method, identity file path, jump host theo **id trong file**, bookmark, thư mục mặc định, tuỳ chọn RDP, port forward). **Không bao giờ** có password, credentialReference, lịch sử truyền/Analyst. Imported alias (`~/.ssh/config`) xuất kèm alias + path.
+- Xuất qua NSSavePanel, ghi atomically, quyền 0600. Có lựa chọn "chỉ thư mục đang chọn" hoặc tất cả.
+- Nhập qua NSOpenPanel: parse + validate bằng đúng validator của form (cấm newline/ký tự điều khiển, port…), file > 5 MB hoặc version lạ → từ chối. Màn xem trước: số host mới / trùng (cùng host+port+user+loại) / lỗi. Trùng: chọn Bỏ qua (mặc định) hoặc Nhập thành bản sao. Luôn sinh UUID mới; ánh xạ lại jump host; jump host thiếu → bỏ trống + cảnh báo. Host dùng password → giữ auth method, ghi chú "cần nhập lại mật khẩu".
+- Nhập trong một transaction SQLite; lỗi → không ghi gì. Sau nhập: sinh lại SSH config của app.
+
+## ADR-021: Màn Cài đặt (D4) — Đã chốt (người dùng đồng ý danh sách PM đề xuất 2026-10-22)
+- Mở bằng mục "Cài đặt" ở sidebar và ⌘, (Settings scene). Lưu bảng `settings(key TEXT PRIMARY KEY, value TEXT)` (migration mới); đọc qua `AppSettings` (Core, có giá trị mặc định + kẹp phạm vi; key lạ/giá trị hỏng → mặc định, không crash).
+- Nhóm và mặc định:
+  - **Chung:** thư mục local mặc định (mặc định ~/Downloads); khi đóng cửa sổ chính: Thoát app (mặc định) / Giữ chạy nền.
+  - **Warp:** mở Tab mới (mặc định) / Cửa sổ mới.
+  - **Truyền file:** số tác vụ đồng thời 1–4 (mặc định 1); giữ lịch sử 100/500/1000/không giới hạn (mặc định 500).
+  - **SSH config:** đường dẫn config người dùng được Include (mặc định `~/.ssh/config`, phải là đường dẫn tuyệt đối, tồn tại, không có ký tự điều khiển; đổi → sinh lại config app); đường dẫn config app (chỉ xem) + nút Mở thư mục trong Finder.
+  - **Bảo mật:** tự điền mật khẩu đã lưu (bật mặc định; tắt → PTY, askpass và Windows clipboard đều không dùng password lưu, askpass hỏi qua tty); thời gian tự xoá clipboard password Windows 10/30/60/90 giây (mặc định 30); "Xoá mọi mật khẩu đã lưu" (liệt kê số mục, xác nhận, xoá item Keychain service `local.sshdesk.credentials` theo tham chiếu của host, gỡ tham chiếu khỏi host).
+  - **Project Analyst:** số lần chạy giữ mỗi thư mục 10–200 (mặc định 50); timeout thử kết nối 1–10 giây (mặc định 3, chèn vào lệnh probe dưới dạng số nguyên đã kẹp).
+  - **Monitor:** chu kỳ mặc định 5/10/30 giây; ngưỡng vàng 50–95 (mặc định 80), đỏ > vàng, ≤ 99 (mặc định 90).
+  - **Windows App:** mặc định cho máy mới: toàn màn hình, nhiều màn hình, chia sẻ clipboard (chỉ áp dụng khi tạo máy mới).
+  - **Dữ liệu:** Xuất / Nhập (ADR-020), mở thư mục dữ liệu, phiên bản app + schema, đường dẫn SQLite.
+- Không có: tắt kiểm tra host key, lưu password ra file, chọn sáng/tối (theo hệ thống).
+
+## ADR-022: Vòng đời app & hoàn thiện UI (D2) — Đã chốt
+- Thoát app (⌘Q, đóng cửa sổ khi cài đặt là Thoát) khi còn job truyền đang chạy/tunnel/Monitor/Analyst đang chạy → hộp xác nhận liệt kê từng loại. Đồng ý: huỷ job (đánh dấu Bị gián đoạn), dừng tunnel, đóng mọi master (`-O exit`), xoá clipboard password (ADR-018) rồi thoát.
+- Empty state cho mọi màn còn thiếu (danh sách rỗng, tìm không thấy, thư mục rỗng, chưa có key, chưa có lịch sử).
+- Phím tắt: ⌘N máy chủ mới, ⌘F tìm, ⌘D nhân bản, ⌘Return mở (Warp/Windows App), ⌘E sửa, ⌫ xoá (có xác nhận), ⌘, Cài đặt, ⌘1…⌘6 chuyển mục sidebar. Liệt kê trong menu để thấy được.
+- Đồng bộ Theme cho form hồ sơ, màn import, AuthPromptCard, màn lỗi DB (phần còn lại của UI1).
 
