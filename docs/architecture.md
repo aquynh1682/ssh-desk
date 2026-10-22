@@ -182,3 +182,14 @@ Môi trường đã kiểm tra (2026-10-21): macOS 27.0.1 arm64, Swift 6.4 (ch�
 - `username:s:` **được Windows App điền sẵn** (người dùng xác nhận) → giữ dòng này.
 - **Đã làm (H1, PM duyệt):** migration v5 (`kind` + cột `rdp*`), `Windows/RDPFileRenderer`, `Windows/WindowsAppLauncher`. File: `rdp/<uuid>/<tên đã làm sạch>.rdp` (tiêu đề cửa sổ Windows App = tên file). `username` và `domain` ghi riêng, không ghép. Host Windows không làm bastion, không có Keychain, bị loại khỏi Truyền file / SSH Keys / Project Analyst.
 - Chưa kiểm chứng: Windows App có nhớ password cho file mở ngoài không, SSH tunnel (lệch tên chứng chỉ).
+
+## ADR-018: Mật khẩu máy Windows — copy tự động khi mở — Đã chốt (người dùng chọn 2026-10-22)
+- **Bối cảnh:** Windows App không có kênh nhận password từ app khác (`.rdp` trên Mac không mang password; `--script bookmark write` không có `--username/--password`; credential nằm trong Keychain sandbox riêng của nó). Người dùng cho biết Windows App không nhớ password cho kết nối mở từ file.
+- **Quyết định (ngoại lệ có chủ đích với spec mục 8/11 "không đưa password qua clipboard"):** host Windows có lựa chọn "Mật khẩu (lưu trong Keychain)". Khi bấm Mở Windows App: mở kết nối như ADR-017 rồi đặt password lên clipboard để người dùng ⌘V vào ô đăng nhập.
+- **Giảm rủi ro:**
+  - Clipboard item đánh dấu `org.nspasteboard.ConcealedType` + `org.nspasteboard.TransientType` (trình quản lý clipboard tuân chuẩn sẽ không lưu lịch sử).
+  - Tự xoá sau 30 giây **chỉ khi clipboard vẫn là giá trị app đặt** (so `changeCount`); thoát app trước hạn → xoá ngay.
+  - Không bao giờ copy cho host SSH; không ghi password vào `.rdp`, log, DB.
+  - Thông báo rõ: "Đã copy mật khẩu — dán (⌘V) vào Windows App. Tự xoá sau 30 giây."
+- **Rủi ro chấp nhận (ghi KNOWN_LIMITATIONS):** trong 30 giây app khác trên Mac đọc được clipboard; nếu bật chia sẻ clipboard của RDP, password có thể đồng bộ vào clipboard của máy Windows sau khi kết nối.
+- Không tự gõ bằng Accessibility (vẫn cấm).
