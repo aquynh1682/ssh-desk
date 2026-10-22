@@ -72,11 +72,12 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [ ] K1 (coder) Ký app bằng chứng chỉ ổn định qua `SIGN_IDENTITY`/`SSHDESK_SIGN_IDENTITY`, fallback ad-hoc + cảnh báo — ADR-023
 - [ ] K2 (coder) IdentityAgent theo host + mặc định Cài đặt, validate chống chèn directive, migration v8 — ADR-024
 - [ ] K3 (coder) CLI `sshdesk` (list/open/help) + URL scheme `sshdesk://` có xác nhận — ADR-025
+- [ ] K4s (coder) Bộ đăng nhập dùng chung (credential set), migration v9 — ADR-030
 - [ ] K4r (researcher) Kiểm chứng đọc/tạo `.xlsx` bằng `unzip -p`/`zip` + XMLParser — ADR-026
-- [ ] K4a (coder) Khung nguồn đồng bộ + hold tự điền + Excel mẫu + XLSX/CSV ghép cột, migration v9 — ADR-026
+- [ ] K4a (coder) Khung nguồn đồng bộ + hold tự điền + Excel mẫu + XLSX/CSV ghép cột, migration v10 — ADR-026
 - [ ] K4c (coder) Hỏi mật khẩu lần đầu + "Lưu vào Keychain" có kiểm tra (Warp/Analyst/Monitor/Truyền file/Windows) — ADR-029
 - [ ] K4b (coder) Nguồn JSON `.sshdesk.json` + Ansible INI/YAML tĩnh — ADR-026
 - [ ] K5r (researcher) Kiểm chứng khoá Secure Enclave macOS 27 / OpenSSH 10.3 — ADR-027
 - [ ] K5 (coder, chỉ khi K5r đạt) Tạo/dùng khoá Secure Enclave — ADR-027
-- [ ] K6 (coder) Monitor đọc Prometheus/Zabbix, migration v10 — ADR-028
+- [ ] K6 (coder) Monitor đọc Prometheus/Zabbix, migration v11 — ADR-028
 - [ ] K7 (doc-writer) README/OVERVIEW/TESTING/KNOWN_LIMITATIONS cho K1–K6, hướng dẫn tạo chứng chỉ, CLI/Alfred, file Excel mẫu
