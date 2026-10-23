@@ -82,10 +82,14 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
             </array>
         </dict>
     </array>
-    <!-- ADR-028: http tới IP/tên nội bộ (.local, không dấu chấm). KHÔNG dùng NSAllowsArbitraryLoads. -->
+    <!-- ADR-028b: cho http tới tên miền nội bộ (nguồn số liệu). NSAllowsArbitraryLoads chỉ có tác dụng khi KHÔNG có
+         NSAllowsLocalNetworking / NSAllowsArbitraryLoadsInWebContent / ForMedia (macOS 10.12+ bỏ qua nó nếu có các khoá đó)
+         nên chỉ khai báo đúng một khoá này. Tài liệu Apple:
+         https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsallowsarbitraryloads
+         (https vẫn kiểm chứng chỉ; TLS tối thiểu 1.2 do MetricsTransport tự đặt vì ATS không còn ép.) -->
     <key>NSAppTransportSecurity</key>
     <dict>
-        <key>NSAllowsLocalNetworking</key>
+        <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
     <!-- Kiểu kéo thả nội bộ giữa hai khung của màn Truyền file (BrowserDragPayload.typeIdentifier). -->

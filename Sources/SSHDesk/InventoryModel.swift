@@ -132,6 +132,13 @@ final class StructuredSetup: Identifiable {
     }
 }
 
+/// Thông báo "Đã thêm N máy từ <nguồn>" (ADR-026b). Chỉ sống trong phiên chạy app.
+struct AutoAddNotice: Identifiable {
+    let id = UUID()
+    let record: InventoryAutoAddRecord
+    var count: Int { record.hostIDs.count }
+}
+
 enum InventoryRoute {
     case list
     case structured(StructuredSetup)
@@ -153,6 +160,8 @@ final class InventoryModel {
     /// Thông báo cần bấm "Đã hiểu" (vd. nhắc xoá file gốc chứa mật khẩu dạng rõ).
     var notice: String?
     var confirmDelete: InventorySource?
+    /// Các lần tự thêm máy chưa đóng (ADR-026b).
+    var autoAdded: [AutoAddNotice] = []
     private var checking = false
 
     init(app: AppModel) { self.app = app }
@@ -190,7 +199,8 @@ final class InventoryModel {
         }
     }
 
-    /// Mở app / app được kích hoạt: so mtime rồi SHA-256 với vân tay đã lưu. KHÔNG tự áp dụng.
+    /// Mở app / app được kích hoạt: so mtime rồi SHA-256 với vân tay đã lưu.
+    /// Nguồn bật "Tự thêm máy mới" mà kế hoạch chỉ có máy mới (ADR-026b) thì tự áp dụng; còn lại chỉ báo, không ghi gì.
     func checkChanges() async {
         guard !checking else { return }
         checking = true
@@ -206,6 +216,90 @@ final class InventoryModel {
         }
         for (id, change) in result where changes[id] != change { dismissedBanner.remove(id) }
         changes = result
+        // Không tự áp dụng khi người dùng đang ở giữa wizard / xem trước (kế hoạch của họ sẽ cũ đi).
+        guard canAutoApply else { return }
+        for s in snapshot where result[s.id] == .changed && s.autoAddNew {
+            await autoApplyIfAdditionsOnly(s)
+        }
+    }
+
+    /// Chỉ tự áp dụng khi không có hub mở ở route khác danh sách, không có việc đang chạy.
+    private var canAutoApply: Bool {
+        guard !busy else { return false }
+        if showHub, case .list = route { return true }
+        return !showHub
+    }
+
+    /// Dựng kế hoạch đồng bộ không đổi route. nil = cần ghép lại cột (không tự xử lý được).
+    private func computePlan(_ source: InventorySource) async throws -> InventorySyncPlan? {
+        guard let app else { return nil }
+        let hosts = app.hosts
+        let sets = app.credentialSets
+        if InventoryStructured.supports(source.kind) {
+            return try await Task.detached {
+                try InventoryStructured.resync(source: source, existingHosts: hosts, credentialSets: sets)
+            }.value
+        }
+        let outcome = try await Task.detached {
+            try InventoryFile.resync(source: source, existingHosts: hosts, credentialSets: sets)
+        }.value
+        if case .ready(_, let plan) = outcome { return plan }
+        return nil
+    }
+
+    /// Tự áp dụng nếu chỉ có máy mới. Không lưu mật khẩu, không giữ cột bí mật (resync không đọc cột đó).
+    /// Mọi lỗi / kế hoạch không sạch -> im lặng, giữ banner "Nguồn có thay đổi" để xem trước.
+    private func autoApplyIfAdditionsOnly(_ source: InventorySource) async {
+        guard let app, let service = app.service else { return }
+        guard let plan = try? await computePlan(source), InventorySync.isAdditionsOnly(plan) else { return }
+        // computePlan là async: người dùng có thể đã mở hub / wizard / xem trước trong lúc chờ -> kiểm lại cổng.
+        guard canAutoApply else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let record = try await service.applyAutoInventory(plan)
+            autoAdded.append(AutoAddNotice(record: record))
+            changes[source.id] = nil
+            await app.reload()
+        } catch {
+            // Không ghi gì (một transaction); người dùng vẫn thấy banner và tự xem trước được.
+        }
+    }
+
+    func setAutoAdd(_ source: InventorySource, enabled: Bool) async {
+        guard let app, let service = app.service else { return }
+        do {
+            try await service.setInventoryAutoAdd(sourceID: source.id, enabled: enabled)
+            await refreshData()
+        } catch { app.show(error, title: "Không đổi được tuỳ chọn của nguồn") }
+    }
+
+    func dismissAutoAdded(_ notice: AutoAddNotice) {
+        autoAdded.removeAll { $0.id == notice.id }
+        if app?.focusHostIDs == Set(notice.record.hostIDs) { app?.focusHostIDs = nil }
+    }
+
+    /// "Xem": lọc danh sách tới đúng các máy vừa thêm và chọn máy đầu tiên.
+    func showAutoAdded(_ notice: AutoAddNotice) {
+        guard let app else { return }
+        app.sidebar = .all
+        app.searchText = ""
+        app.environmentFilter = nil
+        app.focusHostIDs = Set(notice.record.hostIDs)
+        app.selection = notice.record.hostIDs.first { id in app.hosts.contains { $0.id == id } }
+    }
+
+    func undoAutoAdded(_ notice: AutoAddNotice) async {
+        guard let app, let service = app.service else { return }
+        do {
+            let outcome = try await service.undoAutoAdd(notice.record)
+            dismissAutoAdded(notice)
+            await app.reload()
+            await refreshData()
+            var text = "Đã hoàn tác: xoá \(outcome.removed.count) máy"
+            if !outcome.kept.isEmpty { text += ", giữ \(outcome.kept.count) máy đã bị sửa hoặc đang được dùng" }
+            app.showToast(text + ". Đã tắt “Tự thêm máy mới” của “\(notice.record.sourceName)”.")
+        } catch { app.show(error, title: "Không hoàn tác được") }
     }
 
     // MARK: - Hub
@@ -284,7 +378,8 @@ final class InventoryModel {
                 source = InventorySource(
                     id: setup.editing?.id ?? UUID(), name: trimmed.isEmpty ? setup.url.lastPathComponent : trimmed,
                     kind: setup.kind, path: setup.url.path, folder: setup.folder,
-                    defaultEnvironment: setup.environment, lastSyncedAt: setup.editing?.lastSyncedAt,
+                    defaultEnvironment: setup.environment, configJSON: setup.editing?.configJSON ?? "{}",
+                    lastSyncedAt: setup.editing?.lastSyncedAt,
                     lastFingerprint: setup.editing?.lastFingerprint)
             }
             let plan = try InventoryStructured.plan(
@@ -393,7 +488,8 @@ final class InventoryModel {
                 source = InventorySource(
                     id: wizard.editing?.id ?? UUID(), name: trimmed.isEmpty ? wizard.url.lastPathComponent : trimmed,
                     kind: wizard.loaded.kind, path: wizard.url.path, folder: wizard.folder,
-                    defaultEnvironment: wizard.environment, lastSyncedAt: wizard.editing?.lastSyncedAt,
+                    defaultEnvironment: wizard.environment, configJSON: wizard.editing?.configJSON ?? "{}",
+                    lastSyncedAt: wizard.editing?.lastSyncedAt,
                     lastFingerprint: wizard.editing?.lastFingerprint)
             }
             let plan = try InventoryFile.plan(

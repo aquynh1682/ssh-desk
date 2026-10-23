@@ -8,8 +8,22 @@ struct InventoryChangeBanner: View {
 
     var body: some View {
         let list = inventory.bannerSources
-        if !list.isEmpty {
+        if !list.isEmpty || !inventory.autoAdded.isEmpty {
             VStack(spacing: 6) {
+                ForEach(inventory.autoAdded) { notice in
+                    HStack(spacing: 10) {
+                        Image(systemName: "plus.circle").foregroundStyle(Theme.amber)
+                        Text("Đã thêm \(notice.count) máy từ “\(notice.record.sourceName)”.")
+                        Spacer(minLength: 0)
+                        Button("Xem") { inventory.showAutoAdded(notice) }
+                        Button("Hoàn tác") { Task { await inventory.undoAutoAdded(notice) } }
+                        Button("Đóng") { inventory.dismissAutoAdded(notice) }
+                    }
+                    .controlSize(.small)
+                    .font(.system(size: 12.5))
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .background(Theme.amber.opacity(0.14))
+                }
                 ForEach(list) { s in
                     HStack(spacing: 10) {
                         Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(Theme.amber)
@@ -219,6 +233,13 @@ struct InventorySourceList: View {
             }
             .font(.system(size: 12.5))
             Text(s.path).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            Toggle(
+                "Tự thêm máy mới (khi file chỉ có máy mới; không lưu mật khẩu)",
+                isOn: Binding(
+                    get: { s.autoAddNew },
+                    set: { on in Task { await inventory.setAutoAdd(s, enabled: on) } })
+            )
+            .toggleStyle(.checkbox).controlSize(.small).font(.caption)
             HStack {
                 Text(
                     "\(usage?.hosts ?? 0) máy"

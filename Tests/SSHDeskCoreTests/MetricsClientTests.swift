@@ -464,7 +464,7 @@ private func nodeExporterReply(_ r: SeenRequest) -> StubReply {
     @Test func networkErrorsMapToSafeMessages() async throws {
         let cases: [(URLError.Code, MetricsError)] = [
             (.timedOut, .timeout), (.serverCertificateUntrusted, .tlsUntrusted),
-            (.appTransportSecurityRequiresSecureConnection, .atsBlocked), (.cannotConnectToHost, .cannotConnect),
+            (.cannotConnectToHost, .cannotConnect),
         ]
         for (code, expected) in cases {
             let host = MetricsStubProtocol.newHost()
@@ -473,12 +473,11 @@ private func nodeExporterReply(_ r: SeenRequest) -> StubReply {
                 try await stubTransport().send(URLRequest(url: URL(string: "https://\(host)/")!))
             }
         }
-        #expect(MetricsError.atsBlocked.errorDescription?.contains("IP") == true)
     }
 
     @Test func allErrorTextsAreFreeOfSecretsAndHeaders() {
         let all: [MetricsError] = [
-            .timeout, .tooLarge, .redirectBlocked, .unauthorized(status: 401), .httpStatus(500), .atsBlocked,
+            .timeout, .tooLarge, .redirectBlocked, .unauthorized(status: 401), .httpStatus(500),
             .tlsUntrusted, .cannotConnect, .network(code: -1), .invalidResponse, .apiError("x"), .noData,
             .secretMissing, .unsupportedVersion,
         ]

@@ -97,6 +97,8 @@ final class AppModel {
     /// Nhóm đang thu gọn trong bảng "Tất cả máy chủ" (khoá = tên thư mục, "" = Chưa phân loại). Chỉ nhớ trong phiên.
     var collapsedGroups: Set<String> = []
     var selection: UUID?
+    /// Lọc danh sách tới đúng các máy này (nút "Xem" sau khi tự thêm từ nguồn, ADR-026b). nil = không lọc.
+    var focusHostIDs: Set<UUID>?
     var sidebar: SidebarItem = .all
     var searchText = ""
     /// Bộ lọc môi trường của Menu ở cột giữa (độc lập với mục "MÔI TRƯỜNG" ở sidebar).
@@ -329,6 +331,7 @@ final class AppModel {
 
     var visibleHosts: [HostProfile] {
         var list = hosts
+        if let ids = focusHostIDs { list = list.filter { ids.contains($0.id) } }
         var byRecency = false
         switch sidebar {
         case .all, .environment: break

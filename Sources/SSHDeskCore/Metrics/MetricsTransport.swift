@@ -7,7 +7,6 @@ public enum MetricsError: Error, Equatable, LocalizedError {
     case redirectBlocked
     case unauthorized(status: Int)
     case httpStatus(Int)
-    case atsBlocked
     case tlsUntrusted
     case cannotConnect
     case network(code: Int)
@@ -29,8 +28,6 @@ public enum MetricsError: Error, Equatable, LocalizedError {
                 ? "Token bị từ chối hoặc hết hạn — kiểm tra token."
                 : "Bị từ chối (HTTP \(s)) — kiểm tra token/password."
         case .httpStatus(let s): return "Máy chủ trả HTTP \(s)."
-        case .atsBlocked:
-            return "ATS của macOS chặn http tới tên miền; dùng https hoặc địa chỉ IP."
         case .tlsUntrusted:
             return "Chứng chỉ TLS không được tin cậy. Với CA nội bộ, hãy tin cậy CA đó trong Keychain Access của macOS."
         case .cannotConnect: return "Không kết nối được tới máy chủ số liệu."
@@ -51,7 +48,6 @@ public enum MetricsError: Error, Equatable, LocalizedError {
         }
         switch u.code {
         case .timedOut: return .timeout
-        case .appTransportSecurityRequiresSecureConnection: return .atsBlocked
         case .serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot,
             .serverCertificateNotYetValid, .secureConnectionFailed, .clientCertificateRejected:
             return .tlsUntrusted
@@ -185,7 +181,8 @@ public final class URLSessionMetricsTransport: MetricsTransport, @unchecked Send
     public static let timeout: TimeInterval = 10
     public static let maxBytes = 5 * 1024 * 1024
 
-    private let session: URLSession
+    /// Internal để test kiểm cấu hình (TLS tối thiểu).
+    let session: URLSession
     private let delegate: MetricsSessionDelegate
 
     /// `protocolClasses` chỉ để test (URLProtocol giả). `maxBytes` mặc định 5 MB.
@@ -194,6 +191,8 @@ public final class URLSessionMetricsTransport: MetricsTransport, @unchecked Send
         cfg.timeoutIntervalForRequest = Self.timeout
         cfg.timeoutIntervalForResource = Self.timeout
         cfg.waitsForConnectivity = false
+        // ADR-028b: Info.plist bật NSAllowsArbitraryLoads nên ATS không còn ép TLS tối thiểu -> tự ép ở đây.
+        cfg.tlsMinimumSupportedProtocolVersion = .TLSv12
         cfg.httpShouldSetCookies = false
         cfg.httpCookieStorage = nil
         cfg.urlCache = nil

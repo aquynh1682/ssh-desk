@@ -197,7 +197,7 @@ extension HostRepository {
         return s
     }
 
-    private static func writeSource(_ db: Database, _ s: InventorySource, insert: Bool) throws {
+    static func writeSource(_ db: Database, _ s: InventorySource, insert: Bool) throws {
         let values: [SQLValue] = [
             .text(s.name), .text(s.kind.rawValue), .text(s.path), .text(s.folder),
             s.defaultEnvironment.map { .text($0.rawValue) } ?? .null, .text(s.configJSON),

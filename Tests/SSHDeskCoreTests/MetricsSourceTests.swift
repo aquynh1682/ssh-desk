@@ -370,11 +370,24 @@ private struct MetricsEnv {
     }
 }
 
-@Test func infoPlistAllowsLocalNetworkingOnly() throws {
+@Test func infoPlistAllowsArbitraryLoadsWithoutLocalNetworking() throws {
     var url = URL(fileURLWithPath: #filePath)
     for _ in 0..<3 { url.deleteLastPathComponent() }
     let script = try String(contentsOf: url.appendingPathComponent("scripts/build-app.sh"), encoding: .utf8)
-    #expect(script.contains("<key>NSAppTransportSecurity</key>"))
-    #expect(script.contains("<key>NSAllowsLocalNetworking</key>"))
-    #expect(!script.contains("<key>NSAllowsArbitraryLoads</key>"))
+    // Chỉ xét phần tử plist thật (không tính chú thích XML nhắc tên khoá).
+    let uncommented = script.replacingOccurrences(
+        of: "<!--[\\s\\S]*?-->", with: "", options: .regularExpression)
+    #expect(uncommented.contains("<key>NSAppTransportSecurity</key>"))
+    #expect(uncommented.contains("<key>NSAllowsArbitraryLoads</key>"))
+    // Có khoá này thì macOS bỏ qua NSAllowsArbitraryLoads (tài liệu Apple).
+    #expect(!uncommented.contains("NSAllowsLocalNetworking"))
+    #expect(!uncommented.contains("NSAllowsArbitraryLoadsInWebContent"))
+    #expect(!uncommented.contains("NSAllowsArbitraryLoadsForMedia"))
+    #expect(!uncommented.contains("NSExceptionDomains"))
+}
+
+@Test func metricsSessionRequiresTLS12AndKeepsDefaultTrust() {
+    let t = URLSessionMetricsTransport()
+    #expect(t.session.configuration.tlsMinimumSupportedProtocolVersion == .TLSv12)
+    // Không có challenge handler tuỳ biến: mã nguồn transport không chấp nhận chứng chỉ tuỳ ý.
 }

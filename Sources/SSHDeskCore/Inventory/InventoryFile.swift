@@ -183,7 +183,8 @@ public enum InventoryFile {
         credentialSets: [CredentialSet], now: Date = Date()
     ) throws -> InventorySyncPlan {
         var src = source
-        src?.configJSON = InventorySource.encodeConfig(parsed.mapping)
+        let existing = src?.configJSON ?? "{}"
+        src?.configJSON = InventorySource.encodeConfig(parsed.mapping, preserving: existing)
         return try InventorySync.plan(
             source: src, records: parsed.result.records, issues: parsed.result.issues,
             warnings: parsed.result.warnings + loaded.workbook.warnings, failedKeys: parsed.result.failedKeys,

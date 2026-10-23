@@ -525,6 +525,33 @@ public actor ConnectionService {
         try await regenerateSSHConfig()
     }
 
+    /// Áp dụng kế hoạch chỉ-thêm-mới (như `applyInventory`: một transaction + sinh lại SSH config). KHÔNG đụng Keychain.
+    /// Trả ghi nhận để Hoàn tác. Từ chối nếu kế hoạch không phải additions-only.
+    public func applyAutoInventory(_ plan: InventorySyncPlan) async throws -> InventoryAutoAddRecord {
+        guard InventorySync.isAdditionsOnly(plan) else { throw InventoryError.notAdditionsOnly }
+        try await applyInventory(plan)
+        return InventoryAutoAddRecord(plan: plan)
+    }
+
+    /// Hoàn tác (xem `HostRepository.undoAutoAdd`), dọn file cấu hình Warp/RDP của host đã xoá, sinh lại SSH config.
+    public func undoAutoAdd(_ record: InventoryAutoAddRecord) async throws -> InventoryUndoOutcome {
+        let kinds = try await repository.all().reduce(into: [UUID: HostKind]()) { $0[$1.id] = $1.kind }
+        let outcome = try await repository.undoAutoAdd(record)
+        try await regenerateSSHConfig()
+        for id in outcome.removed {
+            if kinds[id] == .windowsRDP {
+                try? rdpLauncher.removeFile(hostID: id)
+            } else {
+                try? launcher.removeConfig(hostID: id)
+            }
+        }
+        return outcome
+    }
+
+    public func setInventoryAutoAdd(sourceID: UUID, enabled: Bool) async throws {
+        try await repository.setInventoryAutoAdd(sourceID: sourceID, enabled: enabled)
+    }
+
     /// Xoá nguồn (gỡ liên kết khỏi host, không xoá host). SSH config không đổi.
     @discardableResult
     public func deleteInventorySource(id: UUID) async throws -> Int {

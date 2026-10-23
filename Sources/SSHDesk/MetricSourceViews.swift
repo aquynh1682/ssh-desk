@@ -154,7 +154,7 @@ struct MetricSourceEditor: View {
                     }
                     if url.lowercased().hasPrefix("http://") {
                         Text(
-                            "http không mã hoá: dữ liệu và token/password đi qua mạng dạng rõ. macOS (ATS) chỉ cho http tới địa chỉ IP, tên không có dấu chấm hoặc .local."
+                            "http không mã hoá: dữ liệu và token/password đi qua mạng dạng rõ."
                         )
                         .font(.caption).foregroundStyle(Theme.red)
                     }

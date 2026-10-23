@@ -55,10 +55,13 @@ public struct InventorySource: Sendable, Identifiable, Equatable {
         try? JSONDecoder().decode(TableMapping.self, from: Data(configJSON.utf8))
     }
 
-    public static func encodeConfig(_ mapping: TableMapping) -> String {
+    /// `preserving`: config cũ của nguồn; cờ "Tự thêm máy mới" (nếu đã ghi) được giữ lại.
+    public static func encodeConfig(_ mapping: TableMapping, preserving existing: String = "{}") -> String {
         let enc = JSONEncoder()
         enc.outputFormatting = [.sortedKeys]
-        return (try? enc.encode(mapping)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        let json = (try? enc.encode(mapping)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        guard let flag = explicitAutoAdd(in: existing) else { return json }
+        return configJSON(json, settingAutoAddNew: flag)
     }
 }
 
@@ -178,6 +181,7 @@ public enum InventoryError: Error, Equatable, CustomStringConvertible {
     case invalidName
     case staleHost(UUID)
     case jumpCycle(String)
+    case notAdditionsOnly
 
     public var description: String {
         switch self {
@@ -187,6 +191,7 @@ public enum InventoryError: Error, Equatable, CustomStringConvertible {
         case .invalidName: return "Tên nguồn không hợp lệ."
         case .staleHost: return "Máy chủ đã bị xoá sau khi xem trước. Hãy xem trước lại."
         case .jumpCycle(let n): return "Jump host của “\(n)” tạo thành vòng."
+        case .notAdditionsOnly: return "Kế hoạch có thay đổi ngoài việc thêm máy mới — cần xem trước."
         }
     }
 }
