@@ -240,6 +240,9 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         return candidate
     }
 
+    /// Host có mật khẩu riêng (không tính bộ đăng nhập) — ADR-030/031.
+    public var hasOwnPassword: Bool { !(credentialReference ?? "").isEmpty }
+
     /// Tham chiếu Keychain của password hiệu lực (ADR-030): riêng của host nếu có → `set-<uuid>` nếu có bộ → nil.
     /// Dùng để HIỂN THỊ "đã lưu mật khẩu?"; mọi đường TỰ ĐIỀN phải dùng `autofillCredentialReference`.
     public var effectiveCredentialReference: String? {

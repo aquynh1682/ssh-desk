@@ -10,6 +10,8 @@ public enum InventoryFile {
         public var fingerprint: String
         /// Nhận ra là file mẫu của SSH Desk -> bỏ qua bước ghép cột.
         public var template: (sheet: TableSheet, mapping: TableMapping)?
+        /// Giá trị cột mật khẩu được giữ (ADR-031); nil = không giữ. Không nằm trong `workbook`.
+        public var secrets: SecretColumnValues?
     }
 
     public static func kind(for url: URL) -> InventorySourceKind? {
@@ -22,19 +24,28 @@ public enum InventoryFile {
 
     /// Đọc file (chỉ `.xlsx` / `.csv`). `headerRow` nil = tự đoán từng sheet.
     public static func load(
-        url: URL, headerRow: Int? = nil, xlsxLimits: XLSXLimits = XLSXLimits()
+        url: URL, headerRow: Int? = nil, xlsxLimits: XLSXLimits = XLSXLimits(), keepSecretColumn: String? = nil
     ) throws -> Loaded {
         guard let kind = kind(for: url) else {
             throw SpreadsheetError.unsupportedExtension("." + url.pathExtension.lowercased())
         }
         let fingerprint = try fingerprint(of: url, kind: kind)
         let workbook: TableWorkbook
-        switch kind {
-        case .excel: workbook = try XLSXReader.read(url: url, headerRow: headerRow, limits: xlsxLimits)
-        default: workbook = try CSVReader.read(url: url, headerRow: headerRow)
+        let secrets = keepSecretColumn.map { SecretColumnValues(title: $0) }
+        do {
+            switch kind {
+            case .excel:
+                workbook = try XLSXReader.read(url: url, headerRow: headerRow, limits: xlsxLimits, keepSecret: secrets)
+            default: workbook = try CSVReader.read(url: url, headerRow: headerRow, keepSecret: secrets)
+            }
+        } catch {
+            secrets?.wipe()
+            throw error
         }
         let template = kind == .excel ? InventoryTemplateFormat.recognize(workbook) : nil
-        return Loaded(url: url, kind: kind, workbook: workbook, fingerprint: fingerprint, template: template)
+        return Loaded(
+            url: url, kind: kind, workbook: workbook, fingerprint: fingerprint, template: template,
+            secrets: secrets)
     }
 
     // MARK: - Vân tay

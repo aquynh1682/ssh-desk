@@ -171,7 +171,9 @@ struct TableBuilder {
         return (head.first { filled($0) >= 2 } ?? head.first)?.number
     }
 
-    func finish(name: String, headerRow requested: Int?, extraWarnings: [String] = []) -> TableSheet {
+    func finish(
+        name: String, headerRow requested: Int?, extraWarnings: [String] = [], keep: SecretColumnValues? = nil
+    ) -> TableSheet {
         let rows = raw.filter { !$0.isBlank || $0.number == requested }
         let header = requested ?? Self.autoHeaderRow(rows) ?? 1
         var passwordColumns: [Int: String] = [:]
@@ -182,15 +184,31 @@ struct TableBuilder {
         }
         var warnings = extraWarnings
         var kept = rows
+        // ADR-031: chỉ khi người dùng bật, giữ MỘT cột (cột đầu có tiêu đề trùng) vào container riêng.
+        var keptColumn: Int?
+        if let keep {
+            keptColumn =
+                passwordColumns.sorted { $0.key < $1.key }
+                .first { $0.value == keep.title.trimmingCharacters(in: .whitespacesAndNewlines) }?.key
+        }
         if !passwordColumns.isEmpty {
             // Xoá giá trị cột mật khẩu ở MỌI dòng (trừ tiêu đề) trước khi dữ liệu rời khỏi reader.
             kept = rows.map { row in
                 guard row.number != header else { return row }
                 var cells = row.cells
+                if let keep, let c = keptColumn, c < cells.count,
+                    !cells[c].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                {
+                    keep.set(sheet: name, row: row.number, bytes: Array(cells[c].utf8))
+                }
                 for i in passwordColumns.keys where i < cells.count { cells[i] = "" }
                 return TableRow(number: row.number, cells: cells)
             }
-            warnings.append("Phát hiện cột mật khẩu — sẽ bỏ qua")
+            warnings.append(
+                keptColumn == nil
+                    ? "Phát hiện cột mật khẩu — sẽ bỏ qua"
+                    : "Cột mật khẩu “\(passwordColumns[keptColumn!] ?? "")” được giữ riêng để lưu vào kho (chỉ khi bạn xác nhận)"
+            )
         }
         return TableSheet(
             name: name, rows: kept, headerRow: header, passwordColumns: passwordColumns, warnings: warnings)

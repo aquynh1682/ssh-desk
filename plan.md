@@ -84,7 +84,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [x] K7 (doc-writer) README/OVERVIEW/TESTING/KNOWN_LIMITATIONS cho K1–K6, hướng dẫn tạo chứng chỉ, CLI/Alfred, file Excel mẫu
 
 ## Bước K (tiếp) — Trả lời của người dùng 2026-10-23
-- [ ] K8a (coder) Lưu mật khẩu từ cột Excel/CSV của khách vào kho (bật từng lần) — ADR-031
+- [~] K8a (code xong, QA chặn→sửa, PM duyệt; chờ thử với file khách có cột mật khẩu) Lưu mật khẩu từ cột Excel/CSV của khách vào kho (bật từng lần) — ADR-031
 - [ ] K8b (coder) Tự áp dụng nguồn khi chỉ có máy mới + Hoàn tác; ATS cho http tên miền nội bộ — ADR-026b, ADR-028b
 - [x] Xác nhận PROD cho nút Mở Warp: người dùng muốn thử trước, chưa làm
 - [x] Gắn SSH Desk vào Warp: tạm không làm

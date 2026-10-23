@@ -69,6 +69,8 @@ public struct InventorySyncPlan: Sendable, Equatable {
     public var issues: [InventoryIssue] = []
     public var warnings: [String] = []
     public var setsToCreate: [String] = []
+    /// Số dòng nguồn -> id host sẽ có sau khi áp dụng (để gắn mật khẩu cột bí mật, ADR-031). Không chứa giá trị.
+    public var rowHosts: [Int: UUID] = [:]
     public var fingerprint: String?
     public var syncedAt = Date()
 
@@ -217,6 +219,7 @@ public enum InventorySync {
             let id = idForRecord[i]!
             let jump: UUID?? = r.kind == .ssh ? jumpFor[id] : .some(nil)
             let wantedSet: CredentialSet? = r.credentialSetName.flatMap(findSet)
+            if r.sourceRow > 0 { plan.rowHosts[r.sourceRow] = id }
             if let name = r.credentialSetName, wantedSet == nil, r.kind == .ssh || r.kind == .windowsRDP,
                 !neededSets.contains(where: { CredentialSet.sameName($0, name) })
             {
@@ -251,6 +254,7 @@ public enum InventorySync {
             }
 
             if host.kind != r.kind {
+                plan.rowHosts[r.sourceRow] = nil
                 plan.issues.append(
                     InventoryIssue(
                         .error, row: r.sourceRow, column: InventoryField.kind.title,

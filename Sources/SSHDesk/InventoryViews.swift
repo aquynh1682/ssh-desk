@@ -127,6 +127,14 @@ struct InventoryHubSheet: View {
         }
         .frame(width: 780, height: 640)
         .overlay { if inventory.busy { ProgressView().controlSize(.large) } }
+        .alert(
+            "Lưu ý về mật khẩu",
+            isPresented: Binding(get: { inventory.notice != nil }, set: { if !$0 { inventory.notice = nil } })
+        ) {
+            Button("Đã hiểu") { inventory.notice = nil }
+        } message: {
+            Text(inventory.notice ?? "")
+        }
     }
 }
 
@@ -281,6 +289,34 @@ struct InventoryWizardView: View {
     @Bindable var inventory: InventoryModel
     @Bindable var wizard: InventoryWizard
 
+    @ViewBuilder
+    private var secretToggles: some View {
+        if !wizard.isTemplate {
+            VStack(alignment: .leading, spacing: 4) {
+                if wizard.passwordHeaders.count > 1 {
+                    Picker("Cột mật khẩu", selection: $wizard.secretHeader) {
+                        ForEach(wizard.passwordHeaders, id: \.self) { Text($0).tag($0) }
+                    }
+                    .disabled(wizard.keepPassword || wizard.reloading)
+                }
+                Toggle(
+                    "Lưu mật khẩu từ cột \(wizard.secretHeader) vào kho",
+                    isOn: Binding(
+                        get: { wizard.keepPassword },
+                        set: { on in Task { await inventory.setKeepPassword(wizard, on) } })
+                )
+                .disabled(wizard.reloading || wizard.secretHeader.isEmpty)
+                if wizard.keepPassword {
+                    Toggle("Ghi đè mật khẩu đã lưu", isOn: $wizard.overwritePassword).padding(.leading, 16)
+                    Text(
+                        "Chỉ áp dụng lần này, không lưu lại. Mật khẩu chỉ ghi vào kho mã hoá, không vào file hay CSDL."
+                    )
+                    .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(wizard.editing == nil ? "Thêm nguồn" : "Sửa ghép cột").font(.title2.bold())
@@ -291,10 +327,11 @@ struct InventoryWizardView: View {
             }
             if !wizard.passwordHeaders.isEmpty {
                 Label(
-                    "Phát hiện cột mật khẩu — sẽ bỏ qua (\(wizard.passwordHeaders.joined(separator: ", "))). Giá trị không được đọc vào app.",
+                    "Phát hiện cột mật khẩu — sẽ bỏ qua (\(wizard.passwordHeaders.joined(separator: ", "))). Mặc định giá trị không được đọc vào app.",
                     systemImage: "lock.shield"
                 )
                 .font(.callout).foregroundStyle(Theme.amber)
+                secretToggles
             }
             Form {
                 if wizard.loaded.workbook.sheets.count > 1 {
@@ -347,7 +384,7 @@ struct InventoryWizardView: View {
             .formStyle(.grouped)
             samplePreview
             HStack {
-                Button("Huỷ") { inventory.route = .list }.keyboardShortcut(.cancelAction)
+                Button("Huỷ") { inventory.cancelToList() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Xem trước") { inventory.showPreview(from: wizard) }
                     .keyboardShortcut(.defaultAction)
@@ -385,6 +422,7 @@ struct InventoryPreviewView: View {
     @Bindable var model: AppModel
     @Bindable var inventory: InventoryModel
     let preview: InventoryPreview
+    @Local private var confirmSecrets = false
 
     private let cap = 150
 
@@ -460,22 +498,51 @@ struct InventoryPreviewView: View {
             }
             .padding(10)
             .background(Theme.control, in: RoundedRectangle(cornerRadius: 8))
-            Text("Không đụng tới ~/.ssh/config. Mật khẩu không nằm trong file nguồn và không được nhập.")
-                .font(.caption).foregroundStyle(.secondary)
+            if let sp = preview.secretPlan {
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(
+                        "Mật khẩu sẽ lưu cho \(sp.newCount) máy mới"
+                            + (sp.replaceCount > 0 ? ", ghi đè \(sp.replaceCount) máy" : "")
+                            + (sp.skippedExisting > 0 ? "; bỏ qua \(sp.skippedExisting) máy đã có mật khẩu riêng" : "")
+                            + ".  Mỗi dòng: ••••",
+                        systemImage: "lock.fill"
+                    )
+                    .font(.callout).foregroundStyle(Theme.amber)
+                    ForEach(sp.invalidMessages.prefix(10), id: \.self) {
+                        Text($0).font(.caption).foregroundStyle(Theme.red)
+                    }
+                }
+            } else {
+                Text("Không đụng tới ~/.ssh/config. Mật khẩu không nằm trong file nguồn và không được nhập.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             HStack {
-                Button("Huỷ") { inventory.route = .list }.keyboardShortcut(.cancelAction)
+                Button("Huỷ") { inventory.cancelToList() }.keyboardShortcut(.cancelAction)
                 if let w = preview.wizard, !w.isTemplate {
                     Button("Quay lại ghép cột") { inventory.route = .wizard(w) }
                 }
                 Spacer()
                 Button("Áp dụng") {
-                    Task { _ = await inventory.apply(preview) }
+                    if let sp = preview.secretPlan, !sp.isEmpty {
+                        confirmSecrets = true
+                    } else {
+                        Task { _ = await inventory.apply(preview) }
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled((!plan.hasChanges && plan.source == nil) || inventory.busy)
             }
         }
         .padding(18)
+        .confirmationDialog(
+            "Lưu mật khẩu cho \(preview.secretPlan?.count ?? 0) máy vào kho mã hoá?", isPresented: $confirmSecrets,
+            titleVisibility: .visible
+        ) {
+            Button("Lưu mật khẩu và áp dụng") { Task { _ = await inventory.apply(preview) } }
+            Button("Huỷ", role: .cancel) {}
+        } message: {
+            Text("Mật khẩu được đọc từ file Excel/CSV và chỉ ghi vào kho mã hoá của app.")
+        }
     }
 
     private func summary(_ p: InventorySyncPlan) -> String {

@@ -21,6 +21,11 @@ final class InventoryWizard: Identifiable {
     var saveAsSource = true
     var reloading = false
     var note: String?
+    /// ADR-031: bật từng lần, không lưu vào config_json.
+    var keepPassword = false
+    var overwritePassword = false
+    /// Cột mật khẩu được chọn (một cột).
+    var secretHeader = ""
 
     init(url: URL, loaded: InventoryFile.Loaded, editing: InventorySource?, suggestedNote: String? = nil) {
         self.url = url
@@ -39,6 +44,15 @@ final class InventoryWizard: Identifiable {
         self.sourceName = editing?.name ?? url.deletingPathExtension().lastPathComponent
         self.folder = editing?.folder ?? ""
         self.environment = editing?.defaultEnvironment
+        self.secretHeader = initial.passwordColumns.sorted { $0.key < $1.key }.first?.value ?? ""
+    }
+
+    /// Xoá bộ nhớ giá trị cột mật khẩu và tắt lựa chọn.
+    func discardSecrets() {
+        loaded.secrets?.wipe()
+        loaded.secrets = nil
+        keepPassword = false
+        overwritePassword = false
     }
 
     var sheet: TableSheet? { loaded.workbook.sheets.first { $0.name == sheetName } }
@@ -80,11 +94,17 @@ final class InventoryPreview: Identifiable {
     /// Quay lại bước ghép cột (nếu đi từ wizard).
     let wizard: InventoryWizard?
     let title: String
+    /// Kế hoạch lưu mật khẩu cột bí mật (ADR-031); nil = không lưu. Không chứa giá trị.
+    var secretPlan: InventorySecretImport.Plan?
 
-    init(plan: InventorySyncPlan, wizard: InventoryWizard?, title: String) {
+    init(
+        plan: InventorySyncPlan, wizard: InventoryWizard?, title: String,
+        secretPlan: InventorySecretImport.Plan? = nil
+    ) {
         self.plan = plan
         self.wizard = wizard
         self.title = title
+        self.secretPlan = secretPlan
     }
 }
 
@@ -130,6 +150,8 @@ final class InventoryModel {
     var showHub = false
     var route: InventoryRoute = .list
     var busy = false
+    /// Thông báo cần bấm "Đã hiểu" (vd. nhắc xoá file gốc chứa mật khẩu dạng rõ).
+    var notice: String?
     var confirmDelete: InventorySource?
     private var checking = false
 
@@ -194,7 +216,16 @@ final class InventoryModel {
         Task { await checkChanges() }
     }
 
+    /// Huỷ wizard/xem trước: xoá bộ nhớ giá trị cột mật khẩu rồi về danh sách.
+    func cancelToList() {
+        if case .wizard(let w) = route { w.discardSecrets() }
+        if case .preview(let p) = route { p.wizard?.discardSecrets() }
+        route = .list
+    }
+
     func close() {
+        if case .wizard(let w) = route { w.discardSecrets() }
+        if case .preview(let p) = route { p.wizard?.discardSecrets() }
         showHub = false
         route = .list
     }
@@ -223,7 +254,8 @@ final class InventoryModel {
                 "Ansible inventory tĩnh (INI hoặc YAML). App không chạy Ansible, không đọc host_vars/group_vars, bỏ qua biến mật khẩu."
             panel.allowedContentTypes = []
         default:
-            panel.message = "Chỉ nhận .xlsx và .csv. App không đọc mật khẩu từ file."
+            panel.message =
+                "Chỉ nhận .xlsx và .csv. Mật khẩu trong file chỉ được lưu khi bạn bật riêng ở bước ghép cột."
             var types: [UTType] = [.commaSeparatedText]
             if let x = UTType(filenameExtension: "xlsx") { types.append(x) }
             panel.allowedContentTypes = types
@@ -284,11 +316,13 @@ final class InventoryModel {
     func changeHeaderRow(_ wizard: InventoryWizard, to row: Int) async {
         wizard.reloading = true
         defer { wizard.reloading = false }
+        wizard.discardSecrets()
         let url = wizard.url
         do {
             let loaded = try await Task.detached { try InventoryFile.load(url: url, headerRow: row) }.value
             wizard.loaded = loaded
             wizard.headerRow = row
+            wizard.secretHeader = wizard.sheet?.passwordColumns.sorted { $0.key < $1.key }.first?.value ?? ""
             if let sheet = wizard.sheet {
                 wizard.mapping = TableMapping.guess(sheet: sheet, restrictTo: InventoryField.freeMappingFields)
                 wizard.mapping.sheet = loaded.kind == .csv ? nil : sheet.name
@@ -296,8 +330,49 @@ final class InventoryModel {
         } catch { app?.show(error, title: "Không đọc được file") }
     }
 
+    /// Bật/tắt giữ cột mật khẩu: bật -> đọc lại file với cột đó được giữ; tắt -> xoá bộ nhớ.
+    func setKeepPassword(_ wizard: InventoryWizard, _ on: Bool) async {
+        guard on else {
+            wizard.discardSecrets()
+            return
+        }
+        let title = wizard.secretHeader
+        guard !title.isEmpty else { return }
+        wizard.reloading = true
+        defer { wizard.reloading = false }
+        let url = wizard.url
+        let row = wizard.headerRow
+        do {
+            let loaded = try await Task.detached {
+                try InventoryFile.load(url: url, headerRow: row, keepSecretColumn: title)
+            }.value
+            // Wizard đã bị huỷ / đổi route trong lúc đọc: wipe ngay, không gán.
+            guard isShowing(wizard) else {
+                loaded.secrets?.wipe()
+                return
+            }
+            wizard.loaded.secrets?.wipe()
+            wizard.loaded = loaded
+            wizard.keepPassword = loaded.secrets != nil
+        } catch {
+            wizard.discardSecrets()
+            app?.show(error, title: "Không đọc được file")
+        }
+    }
+
+    private func isShowing(_ wizard: InventoryWizard) -> Bool {
+        switch route {
+        case .wizard(let w): return w === wizard
+        case .preview(let p): return p.wizard === wizard
+        default: return false
+        }
+    }
+
     func changeSheet(_ wizard: InventoryWizard, to name: String) {
+        wizard.discardSecrets()
         wizard.sheetName = name
+        wizard.secretHeader = wizard.sheet?.passwordColumns.sorted { $0.key < $1.key }.first?.value ?? ""
+
         guard let sheet = wizard.sheet else { return }
         wizard.headerRow = sheet.headerRow
         wizard.mapping = TableMapping.guess(sheet: sheet, restrictTo: InventoryField.freeMappingFields)
@@ -324,7 +399,18 @@ final class InventoryModel {
             let plan = try InventoryFile.plan(
                 source: source, loaded: wizard.loaded, parsed: parsed, existingHosts: app.hosts,
                 credentialSets: app.credentialSets)
-            route = .preview(InventoryPreview(plan: plan, wizard: wizard, title: wizard.url.lastPathComponent))
+            var secretPlan: InventorySecretImport.Plan?
+            if wizard.keepPassword, (wizard.loaded.secrets?.count ?? 0) == 0 {
+                notice = "Đã bật lưu mật khẩu nhưng không có mật khẩu nào trong cột đã chọn (hoặc dữ liệu đã bị xoá)."
+            }
+            if wizard.keepPassword, let secrets = wizard.loaded.secrets, !wizard.isTemplate {
+                secretPlan = InventorySecretImport.plan(
+                    for: plan, secrets: secrets, sheet: parsed.sheet.name, existingHosts: app.hosts,
+                    overwrite: wizard.overwritePassword)
+            }
+            route = .preview(
+                InventoryPreview(
+                    plan: plan, wizard: wizard, title: wizard.url.lastPathComponent, secretPlan: secretPlan))
         } catch { app.show(error, title: "Không dựng được bản xem trước") }
     }
 
@@ -395,11 +481,43 @@ final class InventoryModel {
     }
 
     func apply(_ preview: InventoryPreview) async -> Bool {
+        // Giá trị cột mật khẩu không được tồn tại sau khi áp dụng (xong hay lỗi), và kế hoạch lưu
+        // mật khẩu không được sống lâu hơn dữ liệu của nó.
+        let hadSecretPlan = preview.secretPlan.map { !$0.isEmpty } ?? false
+        defer {
+            busy = false
+            preview.wizard?.discardSecrets()
+            preview.secretPlan = nil
+        }
         guard let app, let service = app.service else { return false }
         busy = true
-        defer { busy = false }
         do {
             try await service.applyInventory(preview.plan)
+            if hadSecretPlan, preview.wizard?.loaded.secrets == nil {
+                notice =
+                    "Chưa lưu mật khẩu: dữ liệu mật khẩu không còn trong bộ nhớ. Hãy nhập lại file và bật “Lưu mật khẩu từ cột”."
+            }
+            if let sp = preview.secretPlan, let wizard = preview.wizard, let secrets = wizard.loaded.secrets,
+                !sp.entries.isEmpty
+            {
+                let sheet = wizard.sheetName
+                let outcome = await InventorySecretImport.save(sp, secrets: secrets, sheet: sheet) { id, pw in
+                    _ = try await service.savePassword(hostID: id, password: pw)
+                }
+                var parts: [String] = []
+                if outcome.saved > 0 {
+                    parts.append(
+                        "Đã lưu mật khẩu cho \(outcome.saved) máy. Hãy xoá hoặc bảo vệ file Excel gốc — nó chứa mật khẩu dạng rõ."
+                    )
+                }
+                if outcome.failed > 0 { parts.append("\(outcome.failed) máy không lưu được mật khẩu vào kho.") }
+                if !sp.invalidRows.isEmpty {
+                    parts.append(
+                        "Mật khẩu ở \(sp.invalidRows.count) dòng không hợp lệ (dòng \(sp.invalidRows.sorted().prefix(10).map(String.init).joined(separator: ", ")))."
+                    )
+                }
+                notice = parts.joined(separator: "\n")
+            }
             await app.reload()
             await refreshData()
             if let id = preview.plan.source?.id { changes[id] = nil }
@@ -411,6 +529,9 @@ final class InventoryModel {
             return true
         } catch {
             app.show(error, title: "Không áp dụng được (chưa ghi gì)")
+            if hadSecretPlan {
+                notice = "Chưa lưu mật khẩu — bật lại “Lưu mật khẩu từ cột” ở bước ghép cột để thử lại."
+            }
             await app.reload()
             return false
         }

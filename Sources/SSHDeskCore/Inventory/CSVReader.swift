@@ -7,7 +7,7 @@ public enum CSVReader {
     public static let maxRows = 5000
 
     public static func read(
-        url: URL, headerRow: Int? = nil, maxBytes: Int = CSVReader.maxBytes
+        url: URL, headerRow: Int? = nil, maxBytes: Int = CSVReader.maxBytes, keepSecret: SecretColumnValues? = nil
     ) throws -> TableWorkbook {
         let url = url.resolvingSymlinksInPath().standardizedFileURL
         let attrs: [FileAttributeKey: Any]
@@ -20,11 +20,12 @@ public enum CSVReader {
         }
         let data: Data
         do { data = try Data(contentsOf: url) } catch { throw SpreadsheetError.unreadable(error.localizedDescription) }
-        return try parse(data: data, name: "CSV", headerRow: headerRow, maxBytes: maxBytes)
+        return try parse(data: data, name: "CSV", headerRow: headerRow, maxBytes: maxBytes, keepSecret: keepSecret)
     }
 
     public static func parse(
-        data: Data, name: String = "CSV", headerRow: Int? = nil, maxBytes: Int = CSVReader.maxBytes
+        data: Data, name: String = "CSV", headerRow: Int? = nil, maxBytes: Int = CSVReader.maxBytes,
+        keepSecret: SecretColumnValues? = nil
     ) throws -> TableWorkbook {
         guard data.count <= maxBytes else {
             throw SpreadsheetError.fileTooLarge(limitMB: max(1, maxBytes / 1_048_576))
@@ -35,7 +36,7 @@ public enum CSVReader {
         for (i, cells) in records.enumerated() { builder.add(number: i + 1, cells: cells) }
         guard builder.nonEmptyRows > 0 else { throw SpreadsheetError.emptyFile }
         if builder.nonEmptyRows > maxRows + 100 { throw SpreadsheetError.tooManyRows(limit: maxRows) }
-        return TableWorkbook(sheets: [builder.finish(name: name, headerRow: headerRow)])
+        return TableWorkbook(sheets: [builder.finish(name: name, headerRow: headerRow, keep: keepSecret)])
     }
 
     static func decode(_ data: Data) throws -> String {

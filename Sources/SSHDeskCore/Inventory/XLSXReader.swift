@@ -24,7 +24,7 @@ public enum XLSXReader {
     static let sheetPattern = #"^xl/worksheets/[A-Za-z0-9_]+\.xml$"#
 
     public static func read(
-        url: URL, headerRow: Int? = nil, limits: XLSXLimits = XLSXLimits()
+        url: URL, headerRow: Int? = nil, limits: XLSXLimits = XLSXLimits(), keepSecret: SecretColumnValues? = nil
     ) throws -> TableWorkbook {
         // unzip hiểu tên file zip là wildcard (`a[1].xlsx` có thể đọc nhầm `a1.xlsx`): luôn chạy trên bản sao
         // trong thư mục tạm 0700 với tên cố định `in.xlsx`.
@@ -72,7 +72,9 @@ public enum XLSXReader {
                 throw SpreadsheetError.unsafeEntryName
             }
             let data = try readEntry(path: path, entry: entry, names: names, budget: &budget, limits: limits)
-            sheets.append(try parseSheet(data, name: ref.name, shared: shared, headerRow: headerRow, limits: limits))
+            sheets.append(
+                try parseSheet(
+                    data, name: ref.name, shared: shared, headerRow: headerRow, limits: limits, keep: keepSecret))
         }
         if sheets.isEmpty { throw SpreadsheetError.noSheets }
         if shared.isEmpty, names.contains(sharedStringsEntry) { warnings.append("Bảng chuỗi dùng chung trống.") }
@@ -248,7 +250,8 @@ public enum XLSXReader {
     }
 
     static func parseSheet(
-        _ data: Data, name: String, shared: [String], headerRow: Int?, limits: XLSXLimits
+        _ data: Data, name: String, shared: [String], headerRow: Int?, limits: XLSXLimits,
+        keep: SecretColumnValues? = nil
     ) throws -> TableSheet {
         let d = SheetDelegate(shared: shared, limits: limits)
         try runParser(data, delegate: d)
@@ -258,7 +261,7 @@ public enum XLSXReader {
         }
         if d.errorCells > 0 { warnings.append("\(d.errorCells) ô lỗi (#REF!...): để trống.") }
         if d.badSharedRefs > 0 { warnings.append("\(d.badSharedRefs) ô tham chiếu chuỗi không tồn tại: để trống.") }
-        return d.builder.finish(name: name, headerRow: headerRow, extraWarnings: warnings)
+        return d.builder.finish(name: name, headerRow: headerRow, extraWarnings: warnings, keep: keep)
     }
 
     /// Chỉ số cột (0 = A) từ tham chiếu ô như `B3`; nil nếu sai dạng.
