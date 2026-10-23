@@ -116,13 +116,19 @@ public struct InventoryRecord: Sendable, Equatable {
     public var credentialSetName: String?
     /// nil = nguồn không quản lý ghi chú.
     public var notes: String?
+    /// `user` chỉ là giá trị mặc định điền cho host MỚI (nguồn không khai báo) — host đã có không so / đổi user.
+    public var userIsDefault = false
+    /// Tag từ nguồn (JSON: `tags`; Ansible: tên group). nil = nguồn không quản lý tag.
+    /// Đồng bộ chỉ THÊM tag còn thiếu, không bao giờ gỡ tag người dùng đã đặt.
+    public var tags: [String]?
     /// Dòng trong file (số dòng Excel/CSV) — để báo lỗi.
     public var sourceRow: Int
 
     public init(
         externalID: String, name: String, hostName: String, port: Int = 22, user: String = "",
         kind: HostKind = .ssh, environment: HostEnvironment? = nil, folder: String? = nil,
-        jumpRef: String? = nil, credentialSetName: String? = nil, notes: String? = nil, sourceRow: Int = 0
+        jumpRef: String? = nil, credentialSetName: String? = nil, notes: String? = nil, tags: [String]? = nil,
+        sourceRow: Int = 0
     ) {
         self.externalID = externalID
         self.name = name
@@ -135,6 +141,7 @@ public struct InventoryRecord: Sendable, Equatable {
         self.jumpRef = jumpRef
         self.credentialSetName = credentialSetName
         self.notes = notes
+        self.tags = tags
         self.sourceRow = sourceRow
     }
 }

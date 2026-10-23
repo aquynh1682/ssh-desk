@@ -160,6 +160,7 @@ extension HostRepository {
             h.credentialSetID = set.id
         }
         if let v = p.notes { h.notes = v }
+        if let v = p.tags { h.tags = v }
         if u.restored { h.sourceMissing = false }
         if let reason = u.holdReason {
             h.autofillHold = true

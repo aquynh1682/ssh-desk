@@ -77,7 +77,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [x] K4r (researcher) Kiểm chứng đọc/tạo `.xlsx` bằng `unzip -p`/`zip` + XMLParser — ADR-026
 - [~] K4a (code xong, QA chưa đạt→sửa, PM duyệt; chờ người dùng mở file mẫu trong Excel/Numbers và thử nhập) Khung nguồn đồng bộ + Excel mẫu + XLSX/CSV ghép cột, migration v10 — ADR-026
 - [~] K4c (code xong, QA đạt, PM duyệt; chờ thử với server thật có password) Hỏi mật khẩu lần đầu + "Lưu vào Keychain" có kiểm tra (Warp/Analyst/Monitor/Truyền file/Windows) — ADR-029
-- [ ] K4b (coder) Nguồn JSON `.sshdesk.json` + Ansible INI/YAML tĩnh — ADR-026
+- [~] K4b (code xong, QA→sửa, PM duyệt; chờ thử với inventory thật của khách) Nguồn JSON `.sshdesk.json` + Ansible INI/YAML tĩnh — ADR-026
 - [x] K5r (researcher) Kiểm chứng khoá Secure Enclave macOS 27 / OpenSSH 10.3 — ADR-027
 - [ ] K5 (coder, chỉ khi K5r đạt) Tạo/dùng khoá Secure Enclave — ADR-027
 - [ ] K6 (coder) Monitor đọc Prometheus/Zabbix, migration v11 — ADR-028

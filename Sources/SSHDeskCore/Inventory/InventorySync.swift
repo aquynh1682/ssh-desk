@@ -24,10 +24,12 @@ public struct InventorySyncPlan: Sendable, Equatable {
         public var jumpHostID: UUID?
         public var credentialSetName: String?
         public var notes: String?
+        /// Toàn bộ tag mới của host (tag cũ + tag còn thiếu từ nguồn).
+        public var tags: [String]?
 
         public var isEmpty: Bool {
             displayName == nil && hostName == nil && port == nil && user == nil && environment == nil
-                && folder == nil && !setsJump && credentialSetName == nil && notes == nil
+                && folder == nil && !setsJump && credentialSetName == nil && notes == nil && tags == nil
         }
     }
 
@@ -225,6 +227,7 @@ public enum InventorySync {
                 var h = InventoryValidator.profile(from: r, folder: effectiveFolder(r) ?? "", id: id, now: now)
                 h.environment = r.environment ?? source?.defaultEnvironment ?? .other
                 h.sourceID = source?.id
+                if let t = r.tags { h.tags = t }
                 h.externalID = source == nil ? nil : r.externalID
                 if r.kind == .ssh {
                     h.authMethod = r.credentialSetName == nil ? .agent : .interactive
@@ -275,7 +278,7 @@ public enum InventorySync {
                 holdParts.append("Port \(host.port) → \(r.port)")
             }
             let oldUser = host.kind == .windowsRDP ? host.rdpUsername : host.user
-            if oldUser != r.user {
+            if !r.userIsDefault && oldUser != r.user {
                 patch.user = r.user
                 let shown: (String) -> String = { $0.isEmpty ? "(trống)" : $0 }
                 changes.append(.init(label: "User", old: shown(oldUser), new: shown(r.user)))
@@ -303,6 +306,18 @@ public enum InventorySync {
                     patch.credentialSetName = wantedSet?.name ?? name
                     changes.append(
                         .init(label: "Bộ đăng nhập", old: current ?? "(không)", new: wantedSet?.name ?? name))
+                }
+            }
+            if let wanted = r.tags {
+                let missingTags = wanted.filter { t in
+                    !host.tags.contains { $0.caseInsensitiveCompare(t) == .orderedSame }
+                }
+                if !missingTags.isEmpty {
+                    patch.tags = host.tags + missingTags
+                    changes.append(
+                        .init(
+                            label: "Tag", old: host.tags.isEmpty ? "(trống)" : host.tags.joined(separator: ", "),
+                            new: (host.tags + missingTags).joined(separator: ", ")))
                 }
             }
             if let notes = r.notes, notes != host.notes {

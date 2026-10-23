@@ -88,8 +88,33 @@ final class InventoryPreview: Identifiable {
     }
 }
 
+/// Bước đặt tên / thư mục / môi trường mặc định của nguồn JSON hoặc Ansible (không có ghép cột).
+@MainActor @Observable
+final class StructuredSetup: Identifiable {
+    let id = UUID()
+    let url: URL
+    let kind: InventorySourceKind
+    var loaded: InventoryStructured.Loaded
+    let editing: InventorySource?
+    var sourceName: String
+    var folder: String
+    var environment: HostEnvironment?
+    var saveAsSource = true
+
+    init(url: URL, kind: InventorySourceKind, loaded: InventoryStructured.Loaded, editing: InventorySource?) {
+        self.url = url
+        self.kind = kind
+        self.loaded = loaded
+        self.editing = editing
+        self.sourceName = editing?.name ?? url.deletingPathExtension().lastPathComponent
+        self.folder = editing?.folder ?? ""
+        self.environment = editing?.defaultEnvironment
+    }
+}
+
 enum InventoryRoute {
     case list
+    case structured(StructuredSetup)
     case wizard(InventoryWizard)
     case preview(InventoryPreview)
 }
@@ -149,7 +174,7 @@ final class InventoryModel {
         checking = true
         defer { checking = false }
         await refreshData()
-        let snapshot = sources.filter { $0.kind.isTabular }
+        let snapshot = sources
         var result: [UUID: InventoryFile.Change] = [:]
         for s in snapshot {
             let change = await Task.detached {
@@ -181,16 +206,59 @@ final class InventoryModel {
         Task { await open(url: url, editing: nil) }
     }
 
-    private func pickFile(title: String) -> URL? {
+    func addStructuredSource(kind: InventorySourceKind) {
+        guard let url = pickFile(title: "Chọn file \(kind.title)", kind: kind) else { return }
+        Task { await openStructured(url: url, kind: kind, editing: nil) }
+    }
+
+    private func pickFile(title: String, kind: InventorySourceKind = .excel) -> URL? {
         let panel = NSOpenPanel()
         panel.title = title
-        panel.message = "Chỉ nhận .xlsx và .csv. App không đọc mật khẩu từ file."
-        var types: [UTType] = [.commaSeparatedText]
-        if let x = UTType(filenameExtension: "xlsx") { types.append(x) }
-        panel.allowedContentTypes = types
+        switch kind {
+        case .json:
+            panel.message = "File xuất của SSH Desk (*.sshdesk.json). Không chứa mật khẩu."
+            panel.allowedContentTypes = [.json]
+        case .ansible:
+            panel.message =
+                "Ansible inventory tĩnh (INI hoặc YAML). App không chạy Ansible, không đọc host_vars/group_vars, bỏ qua biến mật khẩu."
+            panel.allowedContentTypes = []
+        default:
+            panel.message = "Chỉ nhận .xlsx và .csv. App không đọc mật khẩu từ file."
+            var types: [UTType] = [.commaSeparatedText]
+            if let x = UTType(filenameExtension: "xlsx") { types.append(x) }
+            panel.allowedContentTypes = types
+        }
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         return panel.runModal() == .OK ? panel.url : nil
+    }
+
+    func openStructured(url: URL, kind: InventorySourceKind, editing: InventorySource?) async {
+        busy = true
+        defer { busy = false }
+        do {
+            let loaded = try await Task.detached { try InventoryStructured.load(url: url, kind: kind) }.value
+            route = .structured(StructuredSetup(url: url, kind: kind, loaded: loaded, editing: editing))
+            showHub = true
+        } catch { app?.show(error, title: "Không đọc được file") }
+    }
+
+    func showPreview(from setup: StructuredSetup) {
+        guard let app else { return }
+        do {
+            var source: InventorySource?
+            if setup.saveAsSource {
+                let trimmed = setup.sourceName.trimmingCharacters(in: .whitespacesAndNewlines)
+                source = InventorySource(
+                    id: setup.editing?.id ?? UUID(), name: trimmed.isEmpty ? setup.url.lastPathComponent : trimmed,
+                    kind: setup.kind, path: setup.url.path, folder: setup.folder,
+                    defaultEnvironment: setup.environment, lastSyncedAt: setup.editing?.lastSyncedAt,
+                    lastFingerprint: setup.editing?.lastFingerprint)
+            }
+            let plan = try InventoryStructured.plan(
+                source: source, loaded: setup.loaded, existingHosts: app.hosts, credentialSets: app.credentialSets)
+            route = .preview(InventoryPreview(plan: plan, wizard: nil, title: setup.url.lastPathComponent))
+        } catch { app.show(error, title: "Không dựng được bản xem trước") }
     }
 
     func open(url: URL, editing: InventorySource?, note: String? = nil) async {
@@ -268,6 +336,17 @@ final class InventoryModel {
         defer { busy = false }
         let hosts = app.hosts
         let sets = app.credentialSets
+        if InventoryStructured.supports(source.kind) {
+            do {
+                let plan = try await Task.detached {
+                    try InventoryStructured.resync(
+                        source: source, pathOverride: newFile, existingHosts: hosts, credentialSets: sets)
+                }.value
+                route = .preview(InventoryPreview(plan: plan, wizard: nil, title: source.name))
+                showHub = true
+            } catch { app.show(error, title: "Không đồng bộ được") }
+            return
+        }
         do {
             let outcome = try await Task.detached {
                 try InventoryFile.resync(
@@ -293,11 +372,15 @@ final class InventoryModel {
     }
 
     func chooseNewFile(for source: InventorySource) {
-        guard let url = pickFile(title: "Chọn file mới cho nguồn “\(source.name)”") else { return }
+        guard let url = pickFile(title: "Chọn file mới cho nguồn “\(source.name)”", kind: source.kind) else { return }
         Task { await resync(source, newFile: url) }
     }
 
     func editMapping(_ source: InventorySource) {
+        if InventoryStructured.supports(source.kind) {
+            Task { await openStructured(url: URL(fileURLWithPath: source.path), kind: source.kind, editing: source) }
+            return
+        }
         Task { await open(url: URL(fileURLWithPath: source.path), editing: source) }
     }
 

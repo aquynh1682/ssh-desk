@@ -130,7 +130,7 @@ struct SidebarView: View {
                     .frame(width: 22, height: 22).contentShape(Rectangle())
             }
             .buttonStyle(.plain).padding(.top, 16)
-            .help("Nguồn máy chủ (Excel/CSV)…").accessibilityLabel("Nguồn máy chủ")
+            .help("Nguồn máy chủ…").accessibilityLabel("Nguồn máy chủ")
             Button {
                 model.folderDialog = .create
             } label: {

@@ -151,7 +151,7 @@ final class AppModel {
     let sessionPool = SessionPool()
     /// Màn "Project Analyst" (ADR-016).
     @ObservationIgnored lazy var analyst = AnalystModel(app: self)
-    /// Nguồn máy chủ đồng bộ một chiều: Excel/CSV (ADR-026).
+    /// Nguồn máy chủ đồng bộ một chiều: Excel/CSV, JSON, Ansible (ADR-026).
     @ObservationIgnored lazy var inventory = InventoryModel(app: self)
     /// Màn "Monitor" tài nguyên server (ADR-019).
     @ObservationIgnored lazy var monitor = MonitorModel(app: self)

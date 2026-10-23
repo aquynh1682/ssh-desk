@@ -120,6 +120,7 @@ struct InventoryHubSheet: View {
         VStack(spacing: 0) {
             switch inventory.route {
             case .list: InventorySourceList(model: model, inventory: inventory)
+            case .structured(let t): StructuredSetupView(inventory: inventory, setup: t)
             case .wizard(let w): InventoryWizardView(model: model, inventory: inventory, wizard: w)
             case .preview(let p): InventoryPreviewView(model: model, inventory: inventory, preview: p)
             }
@@ -142,12 +143,16 @@ struct InventorySourceList: View {
                 Spacer()
                 Button("Tải file mẫu…") { inventory.saveTemplate() }
                     .help("Tải file Excel mẫu (có dropdown Môi trường / Loại, sheet Hướng dẫn)")
-                Button("Thêm nguồn Excel/CSV…") { inventory.addSource() }
-                    .buttonStyle(.borderedProminent)
+                Menu("Thêm nguồn") {
+                    Button("Excel / CSV…") { inventory.addSource() }
+                    Button("JSON (.sshdesk.json)…") { inventory.addStructuredSource(kind: .json) }
+                    Button("Ansible inventory (INI/YAML)…") { inventory.addStructuredSource(kind: .ansible) }
+                }
+                .menuStyle(.borderedButton).fixedSize()
             }
             Text(
-                "Đồng bộ một chiều từ file Excel/CSV: thêm, đổi, đánh dấu “Không còn trong nguồn” (không bao giờ tự xoá máy). "
-                    + "Luôn xem trước rồi mới áp dụng. Cột mật khẩu trong file bị bỏ qua."
+                "Đồng bộ một chiều từ file Excel/CSV, JSON hoặc Ansible inventory tĩnh: thêm, đổi, đánh dấu “Không còn trong nguồn” (không bao giờ tự xoá máy). "
+                    + "Luôn xem trước rồi mới áp dụng. Cột/biến mật khẩu trong file bị bỏ qua."
             )
             .font(.callout).foregroundStyle(.secondary)
             if inventory.sources.isEmpty {
@@ -189,7 +194,8 @@ struct InventorySourceList: View {
         let usage = inventory.usage[s.id]
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: s.kind == .excel ? "tablecells" : "doc.plaintext")
+                Image(
+                    systemName: s.kind == .excel ? "tablecells" : (s.kind.isTabular ? "doc.plaintext" : "shippingbox"))
                 Text(s.name).font(.headline)
                 Text(s.kind.title).font(.caption).foregroundStyle(.secondary)
                 Spacer()
@@ -216,12 +222,55 @@ struct InventorySourceList: View {
                 Spacer()
                 Button("Đồng bộ lại") { Task { await inventory.resync(s) } }
                 Button("Chọn file mới…") { inventory.chooseNewFile(for: s) }
-                Button("Sửa ghép cột") { inventory.editMapping(s) }
+                Button(s.kind.isTabular ? "Sửa ghép cột" : "Sửa nguồn") { inventory.editMapping(s) }
                 Button("Xoá nguồn", role: .destructive) { inventory.confirmDelete = s }
             }
             .controlSize(.small)
         }
         .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Nguồn JSON / Ansible (không ghép cột)
+
+struct StructuredSetupView: View {
+    @Bindable var inventory: InventoryModel
+    @Bindable var setup: StructuredSetup
+
+    var body: some View {
+        let result = setup.loaded.result
+        VStack(alignment: .leading, spacing: 12) {
+            Text(setup.editing == nil ? "Thêm nguồn \(setup.kind.title)" : "Sửa nguồn \(setup.kind.title)")
+                .font(.title2.bold())
+            Text(setup.url.lastPathComponent).font(.callout.monospaced()).foregroundStyle(.secondary)
+            Text("Đọc được \(result.records.count) máy, \(result.errorCount) lỗi.").font(.callout)
+            ForEach(result.warnings, id: \.self) {
+                Label($0, systemImage: "lock.shield").font(.callout).foregroundStyle(Theme.amber)
+            }
+            if setup.kind == .ansible {
+                Text(
+                    "Tên group được dùng làm tag. Chỉ đọc ansible_host/port/user; không chạy Ansible, không đọc host_vars/group_vars."
+                )
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            Form {
+                Toggle("Lưu làm nguồn để đồng bộ lại", isOn: $setup.saveAsSource)
+                if setup.saveAsSource { TextField("Tên nguồn", text: $setup.sourceName) }
+                TextField("Thư mục mặc định (máy không có thư mục)", text: $setup.folder)
+                Picker("Môi trường mặc định", selection: $setup.environment) {
+                    Text("OTHER").tag(HostEnvironment?.none)
+                    ForEach(HostEnvironment.allCases, id: \.self) { Text($0.rawValue).tag(HostEnvironment?.some($0)) }
+                }
+            }
+            .formStyle(.grouped)
+            Spacer(minLength: 0)
+            HStack {
+                Button("Huỷ") { inventory.route = .list }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Xem trước") { inventory.showPreview(from: setup) }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
     }
 }
 

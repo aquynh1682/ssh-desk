@@ -121,7 +121,7 @@ struct SSHDeskApp: App {
                     .disabled(!model.isReady || model.hosts.isEmpty)
                 Button("Nhập danh sách máy chủ…") { model.beginImportFile() }
                     .disabled(!model.isReady)
-                Button("Nguồn máy chủ (Excel/CSV)…") { model.inventory.openHub() }
+                Button("Nguồn máy chủ…") { model.inventory.openHub() }
                     .disabled(!model.isReady)
             }
             // Thao tác trên máy chủ đang chọn (ADR-022). Xoá dùng ⌘⌫ (không dùng ⌫ trần để khỏi tranh phím

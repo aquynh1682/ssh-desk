@@ -77,7 +77,7 @@ struct MainView: View {
                     Divider()
                     Button("Nhập từ file…") { model.beginImportFile() }
                     Divider()
-                    Button("Nguồn máy chủ (Excel/CSV)…") { model.inventory.openHub() }
+                    Button("Nguồn máy chủ…") { model.inventory.openHub() }
                 } label: {
                     Label("Xuất / nhập danh sách", systemImage: "arrow.up.arrow.down.square")
                 }
