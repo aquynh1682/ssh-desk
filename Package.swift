@@ -6,7 +6,9 @@ let package = Package(
     platforms: [.macOS(.v14)],
     targets: [
         // Logic thuần (model, lưu trữ, sinh lệnh Warp) — không import SwiftUI, test được.
-        .target(name: "SSHDeskCore", dependencies: ["AskpassKit"]),
+        .target(name: "SSHDeskCore", dependencies: ["AskpassKit", "CredentialBackend"]),
+        // Backend Keychain duy nhất (ADR-004b): chỉ Foundation + Security, dùng chung cho app và helper askpass.
+        .target(name: "CredentialBackend"),
         // Logic phân loại prompt askpass (pure, không Foundation) — dùng chung cho helper và Core.
         .target(name: "AskpassKit"),
         // Lớp UI SwiftUI, chỉ gọi vào SSHDeskCore.
@@ -17,7 +19,7 @@ let package = Package(
         // Helper exec: biến slave pty thành controlling tty rồi exec chương trình đích (chỉ Darwin).
         .executableTarget(name: "sshdesk-ctty"),
         // Helper SSH_ASKPASS: chỉ phụ thuộc Darwin + Security (không AppKit/SwiftUI).
-        .executableTarget(name: "sshdesk-askpass", dependencies: ["AskpassKit"]),
+        .executableTarget(name: "sshdesk-askpass", dependencies: ["AskpassKit", "CredentialBackend"]),
         // CLI `sshdesk` (ADR-025): chỉ đọc DB, ghi file yêu cầu. Đặt tên khác `SSHDesk` vì APFS không phân biệt hoa thường.
         .executableTarget(name: "sshdesk-cli", dependencies: ["SSHDeskCore"]),
         .testTarget(

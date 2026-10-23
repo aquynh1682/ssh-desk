@@ -105,8 +105,15 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
     public var sshConfigPath: String?
     public var sshConfigAlias: String?
 
-    /// Tham chiếu Keychain, KHÔNG phải password.
+    /// Tham chiếu Keychain RIÊNG của host, KHÔNG phải password. Ưu tiên hơn bộ đăng nhập (ADR-030).
+    /// Để lấy password dùng `effectiveCredentialReference` / `autofillCredentialReference`, đừng đọc trực tiếp.
     public var credentialReference: String?
+    /// Bộ đăng nhập dùng chung (ADR-030); nil = không dùng bộ.
+    public var credentialSetID: UUID?
+    /// ADR-026/030: đang tạm tắt tự điền cho host này tới khi người dùng xác nhận.
+    public var autofillHold: Bool
+    /// Lý do hold (chỉ giá trị cũ → mới hoặc tên bộ đăng nhập, không secret).
+    public var autofillHoldReason: String?
     public var remoteBookmarks: [RemoteBookmark]
     public var defaultLocalDirectory: String
     public var defaultRemoteDirectory: String
@@ -141,6 +148,9 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         sshConfigPath: String? = nil,
         sshConfigAlias: String? = nil,
         credentialReference: String? = nil,
+        credentialSetID: UUID? = nil,
+        autofillHold: Bool = false,
+        autofillHoldReason: String? = nil,
         remoteBookmarks: [RemoteBookmark] = [],
         defaultLocalDirectory: String = "",
         defaultRemoteDirectory: String = "",
@@ -174,6 +184,9 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         self.sshConfigPath = sshConfigPath
         self.sshConfigAlias = sshConfigAlias
         self.credentialReference = credentialReference
+        self.credentialSetID = credentialSetID
+        self.autofillHold = autofillHold
+        self.autofillHoldReason = autofillHoldReason
         self.remoteBookmarks = remoteBookmarks
         self.defaultLocalDirectory = defaultLocalDirectory
         self.defaultRemoteDirectory = defaultRemoteDirectory
@@ -209,6 +222,20 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         return candidate
     }
 
+    /// Tham chiếu Keychain của password hiệu lực (ADR-030): riêng của host nếu có → `set-<uuid>` nếu có bộ → nil.
+    /// Dùng để HIỂN THỊ "đã lưu mật khẩu?"; mọi đường TỰ ĐIỀN phải dùng `autofillCredentialReference`.
+    public var effectiveCredentialReference: String? {
+        if let own = credentialReference, !own.isEmpty { return own }
+        if let setID = credentialSetID { return CredentialSet.passwordReference(for: setID) }
+        return nil
+    }
+
+    /// Như `effectiveCredentialReference` nhưng nil khi đang hold (ADR-026): PasswordAutofillPolicy, askpass,
+    /// Windows clipboard, phiên SFTP, tunnel, cài key đều chỉ được lấy password qua thuộc tính này.
+    public var autofillCredentialReference: String? {
+        autofillHold ? nil : effectiveCredentialReference
+    }
+
     /// Alias dùng cho `ssh -F <config app> <alias>`; nil nếu hồ sơ imported thiếu alias.
     public var sshAlias: String? {
         guard kind == .ssh else { return nil }
@@ -222,7 +249,7 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         "sshdesk-" + id.uuidString.lowercased()
     }
 
-    public func validate() throws {
+    public func validate(credentialSet: CredentialSet? = nil) throws {
         if displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw HostValidationError.emptyDisplayName
         }
@@ -237,6 +264,7 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         try noNUL(defaultLocalDirectory, "defaultLocalDirectory")
         try noNUL(defaultRemoteDirectory, "defaultRemoteDirectory")
         if let credentialReference { try noNUL(credentialReference, "credentialReference") }
+        if let autofillHoldReason { try noNUL(autofillHoldReason, "autofillHoldReason") }
         if let identityAgent {
             do { try IdentityAgentPath.validate(identityAgent) } catch let e as IdentityAgentError {
                 throw HostValidationError.invalidIdentityAgent(e)
@@ -260,10 +288,11 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
                     != nil
             else { throw HostValidationError.invalidUser(user) }
             if authMethod == .keyFile {
-                guard let identityFile, !identityFile.isEmpty else {
-                    throw HostValidationError.identityFileRequired
-                }
-                do { try SSHConfigWriter.validatePath(identityFile, field: "identityFile") } catch {
+                // Hợp lệ khi identityFile hiệu lực có: của host, hoặc của bộ đăng nhập (ADR-030).
+                let own = identityFile ?? ""
+                let effective = own.isEmpty ? (credentialSet?.identityFile ?? "") : own
+                guard !effective.isEmpty else { throw HostValidationError.identityFileRequired }
+                do { try SSHConfigWriter.validatePath(effective, field: "identityFile") } catch {
                     throw HostValidationError.invalidIdentityFile
                 }
             }

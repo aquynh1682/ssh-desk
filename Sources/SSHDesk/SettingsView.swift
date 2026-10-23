@@ -54,7 +54,7 @@ struct SettingsView: View {
             Button("Huỷ", role: .cancel) {}
         } message: {
             Text(
-                "Xoá \(savedPasswordCount) mật khẩu khỏi Keychain và gỡ tham chiếu khỏi các máy chủ. Hồ sơ máy chủ được giữ nguyên; lần sau đăng nhập sẽ phải nhập lại mật khẩu."
+                "Xoá \(savedPasswordCount) mục (mật khẩu của máy, password và passphrase của các bộ đăng nhập) khỏi Keychain. Bộ đăng nhập, việc gán bộ và hồ sơ máy chủ được giữ nguyên; lần sau đăng nhập sẽ phải nhập lại mật khẩu."
             )
         }
     }
@@ -250,6 +250,7 @@ struct SettingsView: View {
                 }
                 .labelsHidden().frame(width: 110)
             }
+            CredentialSetsSection(model: model)
             SettingsRow("Mật khẩu đã lưu trong Keychain") {
                 Button("Xoá mọi mật khẩu đã lưu…", role: .destructive) {
                     Task {

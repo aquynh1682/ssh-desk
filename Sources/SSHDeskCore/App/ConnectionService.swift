@@ -12,6 +12,8 @@ public enum ConnectionServiceError: Error, Equatable {
     case notWindowsHost
     /// Không có kho Keychain (không thể xoá mật khẩu thật).
     case credentialsUnavailable
+    /// Bộ đã xoá khỏi DB nhưng `count` mục trong kho (Keychain) không xoá được.
+    case setDeletedButKeychainFailed(count: Int)
 }
 
 /// Kết quả import: hồ sơ mới tạo và alias bị bỏ qua vì đã import từ cùng file.
@@ -27,6 +29,8 @@ public enum PasswordCopyOutcome: Sendable, Equatable {
     case copied
     /// Cài đặt "tự điền mật khẩu đã lưu" đang tắt: không copy (ADR-021).
     case disabled
+    /// Host đang bị hold tự điền (ADR-026/030): không copy cho tới khi người dùng xác nhận.
+    case held
     case failed(String)
 }
 
@@ -36,6 +40,10 @@ public struct PasswordPurgeResult: Sendable, Equatable {
     public var removed: Int
     /// Số host không xoá được (Keychain/DB lỗi); tham chiếu của các host này được giữ nguyên để thử lại.
     public var failed: Int
+    /// Số item Keychain của bộ đăng nhập (`set-*`, `setkey-*`) đã xoá (bộ và việc gán được giữ, ADR-030).
+    public var setItemsRemoved = 0
+    /// Số item của bộ đăng nhập không xoá được.
+    public var setItemsFailed = 0
 }
 
 public struct WindowsOpenReport: Sendable, Equatable {
@@ -105,12 +113,30 @@ public actor ConnectionService {
             sshPath: "/usr/bin/ssh", configPath: appConfigURL.path, alias: try alias(of: host))
     }
 
-    /// Lệnh chạy trong Tab Config của Warp. Có password đã lưu (và có helper) -> dùng SSH_ASKPASS.
-    /// `notice` giải thích khi phải dùng lệnh thường dù host có password lưu.
-    public func warpSSHCommand(for host: HostProfile) throws -> (command: String, notice: String?) {
+    /// Lệnh chạy trong Tab Config của Warp. Có password / passphrase đã lưu (và có helper) -> dùng SSH_ASKPASS.
+    /// Password hiệu lực = riêng của host > bộ đăng nhập (ADR-030); passphrase chỉ khi key lấy từ bộ.
+    /// `notice` giải thích khi phải dùng lệnh thường dù host có mật khẩu lưu.
+    public func warpSSHCommand(for host: HostProfile) async throws -> (command: String, notice: String?) {
         let plain = try copyableSSHCommand(for: host)
-        guard let ref = host.credentialReference, let credentials, credentials.exists(ref: ref) else {
-            return (plain, nil)
+        // Đọc lại host để lấy bộ đăng nhập / hold mới nhất (bản của UI có thể cũ).
+        let current = (try? await repository.host(id: host.id)) ?? host
+        let resolved = try? await repository.resolvedCredentials(for: current)
+        let passwordRef = current.effectiveCredentialReference.flatMap {
+            credentials?.exists(ref: $0) == true ? $0 : nil
+        }
+        var passphrase: (ref: String, keyPath: String)?
+        if let r = resolved, let ref = r.passphraseRef, let path = r.passphraseKeyPath,
+            credentials?.exists(ref: ref) == true
+        {
+            passphrase = (ref, path)
+        }
+        guard passwordRef != nil || passphrase != nil else { return (plain, nil) }
+        // Hold (ADR-026/030): không đặt SSHDESK_HOST_REF/KEY_REF, ssh hỏi ngay trong Warp.
+        if current.autofillHold {
+            return (
+                plain,
+                "Đang tạm tắt tự điền mật khẩu cho máy này — mở chi tiết máy để xác nhận. Nhập mật khẩu trong Warp."
+            )
         }
         // Tắt tự điền: không đặt SSHDESK_HOST_REF/SSH_ASKPASS, ssh hỏi mật khẩu ngay trong Warp.
         if let settings, !settings.current.autofillEnabled {
@@ -120,19 +146,22 @@ public actor ConnectionService {
             return (plain, "Không tìm thấy helper đăng nhập tự động — nhập mật khẩu trong Warp.")
         }
         // ProxyJump chạy ssh con dùng chung biến môi trường: tránh gửi password của host đích cho bastion.
-        if host.jumpHostID != nil {
+        if current.jumpHostID != nil {
             return (plain, "Host dùng bastion: không đăng nhập tự động bằng mật khẩu, nhập trong Warp.")
         }
         let command = try ZshQuoting.askpassSshCommand(
-            helperPath: helper.path, hostRef: ref, sshPath: "/usr/bin/ssh",
-            configPath: appConfigURL.path, alias: try alias(of: host))
+            helperPath: helper.path, hostRef: passwordRef, keyRef: passphrase?.ref,
+            keyPath: passphrase.flatMap { $0.keyPath.isEmpty ? nil : $0.keyPath },
+            sshPath: "/usr/bin/ssh", configPath: appConfigURL.path, alias: try alias(of: host))
         return (command, nil)
     }
 
     // MARK: - Mật khẩu đã lưu (Keychain)
 
+    /// Có password hiệu lực đã lưu không (riêng của host hoặc từ bộ đăng nhập, ADR-030). Chỉ để hiển thị:
+    /// không bị hold chặn (hold chỉ chặn việc TỰ ĐIỀN).
     public func hasStoredPassword(_ host: HostProfile) -> Bool {
-        guard let ref = host.credentialReference, let credentials else { return false }
+        guard let ref = host.effectiveCredentialReference, let credentials else { return false }
         return credentials.exists(ref: ref)
     }
 
@@ -182,13 +211,19 @@ public actor ConnectionService {
         return try await savePassword(hostID: hostID, password: password)
     }
 
-    /// Số host đang có tham chiếu mật khẩu.
+    /// Số mục mật khẩu đã lưu: host có tham chiếu riêng + item Keychain của bộ đăng nhập (password và passphrase).
     public func savedPasswordCount() async throws -> Int {
-        try await repository.all().filter { ($0.credentialReference ?? "").isEmpty == false }.count
+        let own = try await repository.all().filter { ($0.credentialReference ?? "").isEmpty == false }.count
+        guard let credentials else { return own }
+        let sets = try await repository.credentialSets().reduce(0) { count, set in
+            count + (credentials.exists(ref: set.passwordReference) ? 1 : 0)
+                + (credentials.exists(ref: set.passphraseReference) ? 1 : 0)
+        }
+        return own + sets
     }
 
     /// Xoá mọi item Keychain theo tham chiếu của từng host rồi gỡ tham chiếu khỏi hồ sơ (ADR-021).
-    /// Chỉ chạm item của app (theo `credentialReference` từng host), không quét Keychain.
+    /// Chỉ chạm item của app (theo `credentialReference` từng host + account tất định của từng bộ), không quét Keychain.
     public func clearAllPasswords() async throws -> PasswordPurgeResult {
         var result = PasswordPurgeResult(removed: 0, failed: 0)
         let hosts = try await repository.all().filter { ($0.credentialReference ?? "").isEmpty == false }
@@ -206,7 +241,31 @@ public actor ConnectionService {
                 result.failed += 1
             }
         }
+        // Item của mọi bộ đăng nhập (account tất định). Giữ bộ và việc gán: bộ chỉ trở thành "chưa có mật khẩu".
+        if let credentials {
+            for set in try await repository.credentialSets() {
+                for ref in [set.passwordReference, set.passphraseReference] where credentials.exists(ref: ref) {
+                    do {
+                        try credentials.delete(ref: ref)
+                        result.setItemsRemoved += 1
+                    } catch {
+                        result.setItemsFailed += 1
+                    }
+                }
+            }
+        }
         return result
+    }
+
+    /// File key hiệu lực (của host hoặc bộ) không tồn tại → đường dẫn đó. Chỉ `fileExists`, không đọc nội dung.
+    public func missingKeyFile(
+        for host: HostProfile, exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) async -> String? {
+        guard host.kind == .ssh, host.connectionMode == .managed,
+            let resolved = try? await repository.resolvedCredentials(for: host),
+            let file = resolved.identityFile
+        else { return nil }
+        return exists(CredentialResolution.expandTilde(file, home: NSHomeDirectory())) ? nil : file
     }
 
     private func alias(of host: HostProfile) throws -> String {
@@ -214,6 +273,102 @@ public actor ConnectionService {
             throw ConnectionServiceError.missingAlias
         }
         return alias
+    }
+
+    // MARK: - Bộ đăng nhập (ADR-030)
+
+    /// Tạo bộ, tuỳ chọn lưu password/passphrase vào Keychain (account tất định). Lỗi Keychain → bỏ bộ vừa tạo.
+    @discardableResult
+    public func createCredentialSet(_ set: CredentialSet, password: String? = nil, passphrase: String? = nil)
+        async throws -> CredentialSet
+    {
+        if password?.isEmpty == false || passphrase?.isEmpty == false, credentials == nil {
+            throw ConnectionServiceError.credentialsUnavailable
+        }
+        let created = try await repository.createCredentialSet(set)
+        do {
+            if let password, !password.isEmpty {
+                try credentials?.save(ref: created.passwordReference, password: password)
+            }
+            if let passphrase, !passphrase.isEmpty {
+                try credentials?.save(ref: created.passphraseReference, password: passphrase)
+            }
+            try await regenerateSSHConfig()
+        } catch {
+            _ = try? await repository.deleteCredentialSet(id: created.id)
+            try? credentials?.delete(ref: created.passwordReference)
+            try? credentials?.delete(ref: created.passphraseReference)
+            throw error
+        }
+        return created
+    }
+
+    /// Sửa bộ (tên, user, key, agent, ghi chú) và sinh lại config: mọi host dùng bộ nhận giá trị mới.
+    @discardableResult
+    public func updateCredentialSet(_ set: CredentialSet) async throws -> CredentialSet {
+        let saved = try await repository.updateCredentialSet(set)
+        try await regenerateSSHConfig()
+        return saved
+    }
+
+    /// Đặt / đổi password của bộ (áp cho mọi host dùng bộ ngay vì ref tất định).
+    public func saveSetPassword(setID: UUID, password: String) async throws {
+        guard let credentials else { throw ConnectionServiceError.credentialsUnavailable }
+        guard let set = try await repository.credentialSet(id: setID) else {
+            throw CredentialSetError.notFound(setID)
+        }
+        try credentials.save(ref: set.passwordReference, password: password)
+    }
+
+    public func saveSetPassphrase(setID: UUID, passphrase: String) async throws {
+        guard let credentials else { throw ConnectionServiceError.credentialsUnavailable }
+        guard let set = try await repository.credentialSet(id: setID) else {
+            throw CredentialSetError.notFound(setID)
+        }
+        try credentials.save(ref: set.passphraseReference, password: passphrase)
+    }
+
+    public func clearSetPassword(setID: UUID) throws {
+        try credentials?.delete(ref: CredentialSet.passwordReference(for: setID))
+    }
+
+    public func clearSetPassphrase(setID: UUID) throws {
+        try credentials?.delete(ref: CredentialSet.passphraseReference(for: setID))
+    }
+
+    public func hasSetPassword(_ setID: UUID) -> Bool {
+        credentials?.exists(ref: CredentialSet.passwordReference(for: setID)) ?? false
+    }
+
+    public func hasSetPassphrase(_ setID: UUID) -> Bool {
+        credentials?.exists(ref: CredentialSet.passphraseReference(for: setID)) ?? false
+    }
+
+    /// Xoá bộ: gỡ khỏi host (một transaction) rồi xoá item Keychain, sinh lại config. Trả id host bị ảnh hưởng.
+    @discardableResult
+    public func deleteCredentialSet(id: UUID) async throws -> [UUID] {
+        let affected = try await repository.deleteCredentialSet(id: id)
+        var failed = 0
+        for ref in [CredentialSet.passwordReference(for: id), CredentialSet.passphraseReference(for: id)] {
+            guard let credentials, credentials.exists(ref: ref) else { continue }
+            do { try credentials.delete(ref: ref) } catch { failed += 1 }
+        }
+        try await regenerateSSHConfig()
+        if failed > 0 { throw ConnectionServiceError.setDeletedButKeychainFailed(count: failed) }
+        return affected
+    }
+
+    /// Gán (hoặc gỡ) bộ cho nhiều host. Gán bằng tay → không hold. Sinh lại config.
+    @discardableResult
+    public func assignCredentialSet(setID: UUID?, to hostIDs: [UUID]) async throws -> Int {
+        let n = try await repository.assignCredentialSet(setID: setID, to: hostIDs)
+        try await regenerateSSHConfig()
+        return n
+    }
+
+    /// Người dùng xác nhận địa chỉ / bộ đăng nhập → bỏ hold tự điền (ADR-026).
+    public func confirmAutofillHold(hostID: UUID) async throws {
+        try await repository.confirmAutofillHold(id: hostID)
     }
 
     // MARK: - CRUD (luôn sinh lại config)
@@ -274,10 +429,13 @@ public actor ConnectionService {
             return WarpOpenReport(result: .failed("Máy Windows không mở bằng Warp."), notice: nil)
         }
         do {
-            try host.validate()
+            try host.validate(credentialSet: try await repository.credentialSet(for: host))
             try await regenerateSSHConfig()
-            let (command, why) = try warpSSHCommand(for: host)
+            let (command, why) = try await warpSSHCommand(for: host)
             notice = why
+            if let missing = await missingKeyFile(for: host) {
+                notice = [why, "Không thấy file key \(missing)."].compactMap { $0 }.joined(separator: " ")
+            }
             let result = await launcher.launch(
                 hostID: host.id, displayName: host.displayName, sshCommand: command,
                 newWindow: newWindow)
@@ -317,8 +475,10 @@ public actor ConnectionService {
         guard let credentials, let secretClipboard else { return .none }
         let current = settings?.current
         if let current, !current.autofillEnabled { return .disabled }
-        let ref = (try? await repository.host(id: host.id))?.credentialReference ?? host.credentialReference
-        guard let ref else { return .none }
+        // Đọc lại host: bộ đăng nhập và hold có thể đã đổi từ lúc UI nạp.
+        let fresh = (try? await repository.host(id: host.id)) ?? host
+        if fresh.autofillHold, fresh.effectiveCredentialReference != nil { return .held }
+        guard let ref = fresh.autofillCredentialReference else { return .none }
         guard let password = credentials.read(ref: ref) else {
             return credentials.exists(ref: ref)
                 ? .failed("Không đọc được mật khẩu từ Keychain.") : .none

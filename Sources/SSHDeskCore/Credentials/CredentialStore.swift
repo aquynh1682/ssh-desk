@@ -1,6 +1,6 @@
 @_exported import AskpassKit
+import CredentialBackend
 import Foundation
-import Security
 
 public enum CredentialStoreError: Error, Equatable, CustomStringConvertible {
     case keychain(status: Int32)
@@ -9,11 +9,16 @@ public enum CredentialStoreError: Error, Equatable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .keychain(let status):
-            let message = SecCopyErrorMessageString(status, nil) as String? ?? "lỗi \(status)"
+            let message = KeychainBackendError.message(for: status)
             return "Keychain: \(message) (\(status))"
         case .invalidReference: return "Tham chiếu Keychain không hợp lệ."
         }
     }
+}
+
+/// Trạng thái một mục trong kho (K4e/ADR-004c: backend Secure Enclave có thể trả `.undecryptable`).
+public enum CredentialStatus: Sendable, Equatable {
+    case missing, present, undecryptable
 }
 
 /// Kho bí mật. Không bao giờ log hay trả password qua `description`.
@@ -23,92 +28,48 @@ public protocol CredentialStore: Sendable {
     func read(ref: String) -> String?
     func delete(ref: String) throws
     func exists(ref: String) -> Bool
+    /// Mặc định suy từ `exists`; backend khác Keychain có thể phân biệt thêm `.undecryptable`.
+    func status(ref: String) -> CredentialStatus
 }
 
-/// Keychain thật: generic password, account = credentialReference.
+extension CredentialStore {
+    public func status(ref: String) -> CredentialStatus { exists(ref: ref) ? .present : .missing }
+}
+
+/// Keychain thật: generic password, account = tham chiếu. Mã truy cập Keychain nằm ở `CredentialBackend`
+/// (ADR-004b), dùng chung với helper `sshdesk-askpass`; ở đây chỉ chuyển tiếp và đổi kiểu lỗi.
 public struct KeychainCredentialStore: CredentialStore, CustomStringConvertible {
-    public let service: String
+    private let backend: KeychainBackend
+    public var service: String { backend.service }
     /// Đường dẫn app/helper được tin cậy trong ACL (ngoài chính tiến trình gọi). Rỗng = ACL mặc định.
-    public let trustedApplicationPaths: [String]
+    public var trustedApplicationPaths: [String] { backend.trustedApplicationPaths }
 
     public init(
         service: String = CredentialConstants.service, trustedApplicationPaths: [String] = []
     ) {
-        self.service = service
-        self.trustedApplicationPaths = trustedApplicationPaths
+        backend = KeychainBackend(service: service, trustedApplicationPaths: trustedApplicationPaths)
     }
 
     public var description: String { "KeychainCredentialStore(service: \(service))" }
 
-    private func query(_ ref: String) -> [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: ref,
-        ]
-    }
-
     public func save(ref: String, password: String) throws {
-        guard !ref.isEmpty else { throw CredentialStoreError.invalidReference }
-        // Xoá rồi thêm để ACL luôn được làm mới (đường dẫn helper có thể đổi sau mỗi lần build).
-        try delete(ref: ref)
-        var attrs = query(ref)
-        attrs[kSecValueData as String] = Data(password.utf8)
-        attrs[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        attrs[kSecAttrLabel as String] = "SSH Desk"
-        if !trustedApplicationPaths.isEmpty, let access = makeAccess() {
-            var withAccess = attrs
-            withAccess[kSecAttrAccess as String] = access
-            let status = SecItemAdd(withAccess as CFDictionary, nil)
-            if status == errSecSuccess { return }
-            // Môi trường không chấp nhận kết hợp thuộc tính: rơi về ACL mặc định.
-        }
-        let status = SecItemAdd(attrs as CFDictionary, nil)
-        guard status == errSecSuccess else { throw CredentialStoreError.keychain(status: status) }
+        do { try backend.save(account: ref, secret: password) } catch { throw Self.map(error) }
     }
 
-    public func read(ref: String) -> String? {
-        var q = query(ref)
-        q[kSecReturnData as String] = true
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
-            let data = out as? Data
-        else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
+    public func read(ref: String) -> String? { backend.read(account: ref) }
 
     public func delete(ref: String) throws {
-        let status = SecItemDelete(query(ref) as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw CredentialStoreError.keychain(status: status)
-        }
+        do { try backend.delete(account: ref) } catch { throw Self.map(error) }
     }
 
-    /// Chỉ hỏi thuộc tính (không lấy dữ liệu) nên không kích hoạt hộp thoại ACL.
-    public func exists(ref: String) -> Bool {
-        var q = query(ref)
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        q[kSecReturnAttributes as String] = true
-        return SecItemCopyMatching(q as CFDictionary, nil) == errSecSuccess
-    }
+    public func exists(ref: String) -> Bool { backend.exists(account: ref) }
 
-    /// ACL: chính tiến trình hiện tại + các đường dẫn được liệt kê (API cũ, deprecated nhưng còn hoạt động).
-    @available(macOS, deprecated: 10.10)
-    private func makeAccess() -> SecAccess? {
-        var trusted: [SecTrustedApplication] = []
-        var me: SecTrustedApplication?
-        if SecTrustedApplicationCreateFromPath(nil, &me) == errSecSuccess, let me { trusted.append(me) }
-        for path in trustedApplicationPaths {
-            var app: SecTrustedApplication?
-            if SecTrustedApplicationCreateFromPath(path, &app) == errSecSuccess, let app {
-                trusted.append(app)
-            }
+    private static func map(_ error: Error) -> CredentialStoreError {
+        switch error as? KeychainBackendError {
+        case .status(let s)?: return .keychain(status: s)
+        case .invalidAccount?: return .invalidReference
+        case nil: return .keychain(status: -1)
         }
-        var access: SecAccess?
-        guard SecAccessCreate("SSH Desk" as CFString, trusted as CFArray, &access) == errSecSuccess
-        else { return nil }
-        return access
     }
 }
 

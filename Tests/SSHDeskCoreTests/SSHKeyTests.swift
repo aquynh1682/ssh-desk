@@ -449,6 +449,30 @@ extension ProcessGroup {
             #expect(r.outcome == .success("Đã cài key lên máy chủ."))
         }
 
+        @Test(.enabled(if: on)) func setPasswordFilledAndHoldBlocks() async throws {
+            for hold in [false, true] {
+                let dir = try KeyTempDir()
+                defer { dir.cleanup() }
+                let pub = try pubKey(dir)
+                let record = dir.path("pw.txt")
+                let store = InMemoryCredentialStore()
+                let setID = UUID()
+                try store.save(ref: CredentialSet.passwordReference(for: setID), password: Self.secret)
+                var h = HostProfile(
+                    displayName: "web", hostName: "web.example.com", user: "deploy", credentialSetID: setID)
+                h.autofillHold = hold
+                let inst = try SSHKeyInstaller(
+                    configPath: "/c/config", publicKeyPath: pub, alias: "sshdesk-x", host: h,
+                    credentials: store, executable: try fakeCopyID(dir, record: record))
+                let session = try await inst.start()
+                let r = await driveKeyTask(session, answers: ["typed-1", "typed-2"])
+                #expect(r.outcome == .success("Đã cài key lên máy chủ."))
+                #expect(r.prompts.count == (hold ? 2 : 1))
+                #expect((try? String(contentsOfFile: record, encoding: .utf8)) == (hold ? "typed-1" : Self.secret))
+                #expect(!"\(r.prompts)".contains(Self.secret))
+            }
+        }
+
         @Test(.enabled(if: on)) func failureReasonIsSanitized() async throws {
             let dir = try KeyTempDir()
             defer { dir.cleanup() }

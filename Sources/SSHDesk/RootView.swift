@@ -94,6 +94,9 @@ struct MainView: View {
             HostFormView(model: model, target: target)
         }
         .sheet(isPresented: $model.showImport) { ImportView(model: model) }
+        .sheet(item: $model.assignSetTarget) { target in
+            AssignSetSheet(model: model, target: target)
+        }
         .sheet(item: $model.exchangePreview) { preview in
             HostImportPreviewSheet(model: model, preview: preview)
         }

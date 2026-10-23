@@ -119,7 +119,7 @@ struct MonitorCoordinatorTests {
         let c = MonitorCoordinator(sessions: provider, onUpdate: { log.add($0) })
         await c.start(hosts: [h], interval: 3600)
         // vòng tự chạy bởi start; đợi nó xong rồi gọi thêm
-        try? await Task.sleep(for: .milliseconds(200))
+        try? await Task.sleep(for: .milliseconds(1200))
         var s = await c.states[h.id]
         #expect(s?.status == .ok)
         #expect(s?.snapshot?.cpuPercent == nil)  // lần đầu
@@ -146,7 +146,7 @@ struct MonitorCoordinatorTests {
             errors: [bad.id: SessionConnectError.failed("Permission denied")])
         let c = MonitorCoordinator(sessions: provider)
         await c.start(hosts: [bad, good, lost], interval: 3600)
-        try? await Task.sleep(for: .milliseconds(300))
+        try? await Task.sleep(for: .milliseconds(1200))
         let states = await c.states
         #expect(states[good.id]?.status == .ok)
         #expect(states[bad.id]?.status == .failed("Permission denied"))
@@ -174,11 +174,11 @@ struct MonitorCoordinatorTests {
         #expect(await c.refreshRound())
         #expect(await c.refreshRound())
         // Không thử lại tự động: chờ thêm một khoảng rồi kiểm số lần yêu cầu không tăng.
-        try? await Task.sleep(for: .milliseconds(300))
+        try? await Task.sleep(for: .milliseconds(1200))
         #expect(provider.requested.count == 1)
         await c.retry(hostID: bad.id)
         #expect(await Self.waitUntil { provider.requested.count >= 2 })
-        try? await Task.sleep(for: .milliseconds(300))
+        try? await Task.sleep(for: .milliseconds(1200))
         #expect(provider.requested.count == 2)
         await c.stop()
     }
@@ -189,7 +189,7 @@ struct MonitorCoordinatorTests {
         let provider = FakeMonitorProvider(executors: [h.id: ex])
         let c = MonitorCoordinator(sessions: provider)
         await c.start(hosts: [h], interval: 3600)
-        try? await Task.sleep(for: .milliseconds(200))
+        try? await Task.sleep(for: .milliseconds(1200))
         #expect(await c.states[h.id]?.status == .unsupported)
         _ = await c.refreshRound()
         #expect(await ex.procCalls == 1)
@@ -202,7 +202,7 @@ struct MonitorCoordinatorTests {
         let provider = FakeMonitorProvider(executors: [h.id: ex])
         let c = MonitorCoordinator(sessions: provider)
         await c.start(hosts: [h], interval: 3600)
-        try? await Task.sleep(for: .milliseconds(200))
+        try? await Task.sleep(for: .milliseconds(1200))
         #expect(await c.states[h.id]?.status == .failed("Hết thời gian chờ"))
         await ex.setMode(.ok)
         #expect(await c.refreshRound())

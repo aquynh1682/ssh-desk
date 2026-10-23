@@ -31,8 +31,11 @@ struct HostFormView: View {
     private var errors: [HostDraft.Field: String] {
         draft.errors(
             basedOn: base, hasSavedPassword: hasSavedPassword,
-            passwordEntered: !passwordInput.isEmpty)
+            passwordEntered: !passwordInput.isEmpty, credentialSet: selectedSet,
+            setHasPassword: selectedSet.map { model.setHasPassword($0.id) } ?? false)
     }
+
+    private var selectedSet: CredentialSet? { model.credentialSet(id: draft.credentialSetID) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -223,6 +226,7 @@ struct HostFormView: View {
                 }
             }
         }
+        if draft.usesCredentialSet && !isImported { credentialSetPicker }
         if draft.authChoice == .password {
             if hasSavedPassword && !changingPassword {
                 HStack {
@@ -240,12 +244,41 @@ struct HostFormView: View {
                         "Mật khẩu", text: $passwordInput,
                         prompt: Text(
                             hasSavedPassword
-                                ? "Để trống = giữ mật khẩu hiện tại" : (isWindows ? "Mật khẩu Windows" : "Mật khẩu SSH")
+                                ? "Để trống = giữ mật khẩu hiện tại"
+                                : (selectedSet != nil
+                                    ? "Để trống = dùng mật khẩu của bộ"
+                                    : (isWindows ? "Mật khẩu Windows" : "Mật khẩu SSH"))
                         ))
                 }
             }
         }
         Text(authNote).font(.caption).foregroundStyle(.secondary)
+    }
+
+    /// Bộ đăng nhập dùng chung (ADR-030). Mật khẩu riêng của máy (nếu có) vẫn ưu tiên hơn bộ.
+    @ViewBuilder
+    private var credentialSetPicker: some View {
+        Picker("Bộ đăng nhập", selection: $draft.credentialSetID) {
+            Text("Không dùng").tag(UUID?.none)
+            ForEach(model.credentialSets) { set in
+                Text("\(set.name) — \(set.kindLabel(hasPassword: model.setHasPassword(set.id)))")
+                    .tag(UUID?.some(set.id))
+            }
+        }
+        if let set = selectedSet {
+            if let w = draft.userMismatchWarning(for: set) {
+                Text(w).font(.caption).foregroundStyle(Theme.amber)
+            }
+            if let file = set.identityFile,
+                !FileManager.default.fileExists(atPath: CredentialResolution.expandTilde(file, home: NSHomeDirectory()))
+            {
+                Text("Không thấy file key \(file)").font(.caption).foregroundStyle(Theme.amber)
+            }
+            if hasSavedPassword {
+                Text("Máy có mật khẩu riêng: ưu tiên hơn mật khẩu của bộ “\(set.name)”.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     /// Agent ngoài qua `IdentityAgent` (ADR-024). Chỉ host managed SSH.
@@ -345,7 +378,7 @@ struct HostFormView: View {
         if case .duplicate(let source, let copy) = target {
             duplicateSource = source
             base = copy
-            hasSavedPassword = model.hasStoredPassword(source)
+            hasSavedPassword = model.hasOwnPassword(source)
             draft = HostDraft(host: copy, hasSavedPassword: hasSavedPassword)
             showAdvanced = true
             nameFocused = true
@@ -357,7 +390,7 @@ struct HostFormView: View {
         }
         if case .edit(let h) = target {
             base = h
-            hasSavedPassword = model.hasStoredPassword(h)
+            hasSavedPassword = model.hasOwnPassword(h)
             draft = HostDraft(host: h, hasSavedPassword: hasSavedPassword)
             showAdvanced = true
         }

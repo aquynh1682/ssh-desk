@@ -53,6 +53,8 @@ public struct HostDraft: Equatable, Sendable {
     public var identityAgentPreset: IdentityAgentPreset?
     public var identityAgentCustom = ""
     public var jumpHostID: UUID?
+    /// Bộ đăng nhập dùng chung (ADR-030). Chỉ có hiệu lực khi xác thực là Mật khẩu / File khoá.
+    public var credentialSetID: UUID?
     public var project = ""
     public var environment: HostEnvironment = .other
     public var tagsText = ""
@@ -95,8 +97,8 @@ public struct HostDraft: Equatable, Sendable {
         portText = String(host.port)
         authChoice =
             host.kind == .windowsRDP
-            ? (hasSavedPassword ? .password : .prompt)
-            : .from(host.authMethod, hasSavedPassword: hasSavedPassword)
+            ? (hasSavedPassword || host.credentialSetID != nil ? .password : .prompt)
+            : .from(host.authMethod, hasSavedPassword: hasSavedPassword || host.credentialSetID != nil)
         identityFile = host.identityFile ?? ""
         if let agent = host.identityAgent {
             let preset = IdentityAgentPreset.matching(agent)
@@ -104,6 +106,7 @@ public struct HostDraft: Equatable, Sendable {
             if preset == .custom { identityAgentCustom = agent }
         }
         jumpHostID = host.jumpHostID
+        credentialSetID = host.credentialSetID
         project = host.project
         environment = host.environment
         tagsText = host.tags.joined(separator: ", ")
@@ -151,6 +154,7 @@ public struct HostDraft: Equatable, Sendable {
             h.identityAgent = nil
             h.jumpHostID = nil
             h.remoteBookmarks = []
+            h.credentialSetID = authChoice == .password ? credentialSetID : nil
             return h
         }
         h.connectionMode = .managed
@@ -158,10 +162,28 @@ public struct HostDraft: Equatable, Sendable {
         h.user = user.trimmingCharacters(in: .whitespacesAndNewlines)
         h.port = Int(portText.trimmingCharacters(in: .whitespaces)) ?? 0
         h.authMethod = authChoice.method
-        h.identityFile = authChoice == .keyFile ? identityFile : nil
+        h.identityFile = authChoice == .keyFile && !identityFile.isEmpty ? identityFile : nil
         h.identityAgent = identityAgentValue
         h.jumpHostID = jumpHostID
+        h.credentialSetID = usesCredentialSet ? credentialSetID : nil
         return h
+    }
+
+    /// Picker "Bộ đăng nhập" chỉ hiện với Mật khẩu / File khoá (SSH) và Mật khẩu (Windows).
+    public var usesCredentialSet: Bool {
+        switch authChoice {
+        case .password: return true
+        case .keyFile: return kind == .ssh
+        case .agent, .prompt: return false
+        }
+    }
+
+    /// Cảnh báo (không chặn, không tự sửa): user của host khác user gợi ý của bộ (ADR-030). Windows không áp dụng.
+    public func userMismatchWarning(for set: CredentialSet?) -> String? {
+        guard kind == .ssh, let set, let hint = set.user else { return nil }
+        let typed = user.trimmingCharacters(in: .whitespaces)
+        guard !typed.isEmpty, typed != hint else { return nil }
+        return "User của máy (\(typed)) khác user gợi ý của bộ “\(set.name)” (\(hint)). App không tự sửa."
     }
 
     /// Giá trị `IdentityAgent` sẽ lưu cho host managed SSH; nil = theo mặc định.
@@ -176,9 +198,12 @@ public struct HostDraft: Equatable, Sendable {
     /// Lỗi theo trường (tiếng Việt). Rỗng = hợp lệ.
     /// - hasSavedPassword: hồ sơ đang có mật khẩu trong Keychain.
     /// - passwordEntered: người dùng đã gõ mật khẩu mới.
+    /// - credentialSet / setHasPassword: bộ đăng nhập đã chọn (ADR-030) và bộ đó đã có password chưa.
     public func errors(
-        basedOn base: HostProfile?, hasSavedPassword: Bool = false, passwordEntered: Bool = false
+        basedOn base: HostProfile?, hasSavedPassword: Bool = false, passwordEntered: Bool = false,
+        credentialSet: CredentialSet? = nil, setHasPassword: Bool = false
     ) -> [Field: String] {
+        let set = usesCredentialSet ? credentialSet : nil
         var result: [Field: String] = [:]
         let isImported = base?.connectionMode == .existingSSHConfigAlias
         if displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -203,16 +228,17 @@ public struct HostDraft: Equatable, Sendable {
             if user.trimmingCharacters(in: .whitespaces).isEmpty {
                 result[.user] = "Cần nhập tên người dùng."
             }
-            if authChoice == .keyFile && identityFile.isEmpty {
+            if authChoice == .keyFile && identityFile.isEmpty && (set?.identityFile ?? "").isEmpty {
                 result[.identityFile] = "Hãy chọn file khoá riêng."
             }
         }
-        if authChoice == .password && !hasSavedPassword && !passwordEntered {
+        // Có bộ đăng nhập thì không bắt nhập mật khẩu riêng (bộ có thể được điền mật khẩu sau).
+        if authChoice == .password && !hasSavedPassword && !passwordEntered && set == nil {
             result[.password] = "Nhập mật khẩu."
         }
         // Các quy tắc còn lại (ký tự cấm, newline...) lấy từ validate() của model.
         if result.isEmpty {
-            do { try profile(basedOn: base).validate() } catch let e as HostValidationError {
+            do { try profile(basedOn: base).validate(credentialSet: set) } catch let e as HostValidationError {
                 let (f, m) = Self.describe(e)
                 result[f] = m
             } catch { result[.general] = "Dữ liệu không hợp lệ." }

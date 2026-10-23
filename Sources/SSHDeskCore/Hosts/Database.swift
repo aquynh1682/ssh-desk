@@ -180,6 +180,27 @@ public final class Database: @unchecked Sendable {
         Migration(statements: [
             "ALTER TABLE hosts ADD COLUMN identity_agent TEXT"
         ]),
+        // v9: bộ đăng nhập dùng chung (ADR-030) + hold tự điền (ADR-026, thêm sớm vì gán bộ từ file cần hold).
+        // Không có cột secret: password ở Keychain `set-<uuid>`, passphrase `setkey-<uuid>`.
+        // Xoá bộ → host mất liên kết (ON DELETE SET NULL), không xoá host.
+        Migration(statements: [
+            """
+            CREATE TABLE credential_sets (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                user TEXT,
+                identity_file TEXT,
+                identity_agent TEXT,
+                note TEXT NOT NULL DEFAULT '',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+            """,
+            "ALTER TABLE hosts ADD COLUMN credential_set_id TEXT REFERENCES credential_sets(id) ON DELETE SET NULL",
+            "ALTER TABLE hosts ADD COLUMN autofill_hold INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE hosts ADD COLUMN autofill_hold_reason TEXT",
+            "CREATE INDEX idx_hosts_credential_set ON hosts(credential_set_id)",
+        ]),
     ]
 
     /// Phiên bản schema mà bản app này biết (hiện ở màn Cài đặt).

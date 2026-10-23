@@ -130,7 +130,7 @@ final class BrowserTab: Identifiable {
     /// Tự điền password Keychain (một lần/phiên, theo `PasswordAutofillPolicy`) hoặc hiện thẻ prompt.
     private func answer(_ kind: PromptKind, from source: RemoteSession) async {
         if PasswordAutofillPolicy.shouldAutofill(prompt: kind, host: host, alreadyFilled: autofilled),
-            let ref = host.credentialReference
+            let ref = host.autofillCredentialReference
         {
             autofilled = true
             let store = owner.credentials

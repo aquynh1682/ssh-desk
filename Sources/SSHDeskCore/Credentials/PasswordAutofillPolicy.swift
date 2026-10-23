@@ -21,7 +21,8 @@ public enum PasswordAutofillPolicy {
         promptText: String, host: HostProfile, alreadyFilled: Bool
     ) -> Bool {
         guard !alreadyFilled else { return false }
-        guard let ref = host.credentialReference, !ref.isEmpty else { return false }
+        // Password hiệu lực (riêng > bộ đăng nhập, ADR-030); nil khi hold (ADR-026).
+        guard let ref = host.autofillCredentialReference, !ref.isEmpty else { return false }
         guard host.jumpHostID == nil else { return false }
         switch host.connectionMode {
         case .existingSSHConfigAlias:
@@ -31,6 +32,10 @@ public enum PasswordAutofillPolicy {
                 || matchesKeyboardInteractivePrompt(promptText, user: host.user, hostName: host.hostName)
         }
     }
+
+    // Passphrase KHÔNG bao giờ tự điền qua PTY (ADR-030, QA K4s): server có thể in dòng giả giống prompt
+    // passphrase trong banner, passphrase rơi vào prompt password kế tiếp và bị gửi lên server. Chỉ đường
+    // askpass (Warp) mới điền passphrase vì chỉ ssh mới gọi được helper.
 
     /// `ssh` in `"%.30s@%.128s's password: "` (user cắt 30, host cắt 128 ký tự).
     static func matchesManagedPrompt(_ text: String, user: String, hostName: String) -> Bool {

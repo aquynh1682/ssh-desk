@@ -69,7 +69,7 @@ public struct SessionConnector: Sendable {
                 case .authPrompt(let kind):
                     if PasswordAutofillPolicy.shouldAutofill(
                         prompt: kind, host: host, alreadyFilled: filled),
-                        let ref = host.credentialReference
+                        let ref = host.autofillCredentialReference
                     {
                         filled = true
                         let password = await Task.detached { store.read(ref: ref) }.value

@@ -88,7 +88,12 @@ final class AppModel {
     var hosts: [HostProfile] = []
     /// Mọi thư mục (kể cả rỗng), đã sắp theo tên.
     var folders: [String] = []
+    /// Bộ đăng nhập dùng chung (ADR-030) + số host đang dùng mỗi bộ.
+    private(set) var credentialSets: [CredentialSet] = []
+    private(set) var credentialSetUsage: [UUID: Int] = [:]
     var folderDialog: FolderDialog?
+    /// Sheet "Gán bộ đăng nhập…" cho cả thư mục (ADR-030).
+    var assignSetTarget: AssignSetTarget?
     /// Nhóm đang thu gọn trong bảng "Tất cả máy chủ" (khoá = tên thư mục, "" = Chưa phân loại). Chỉ nhớ trong phiên.
     var collapsedGroups: Set<String> = []
     var selection: UUID?
@@ -117,6 +122,8 @@ final class AppModel {
 
     let paths: AppPaths
     private(set) var service: ConnectionService?
+    /// Repository host/bộ đăng nhập (cùng DB với `service`).
+    private(set) var hostRepository: HostRepository?
     private(set) var transfers: TransferManager?
     /// Màn "Truyền file": khung local, tab remote, kéo thả. Tạo khi dữ liệu đã sẵn sàng.
     private(set) var browser: FileBrowserModel?
@@ -184,6 +191,7 @@ final class AppModel {
                 credentials: credentials, secretClipboard: secretClipboard,
                 askpassHelper: AskpassHelper.defaultURL(), settings: settingsStore)
             self.service = service
+            hostRepository = repo
             analystRepository = AnalystRunRepository(
                 database: db, retention: loaded.analystRetention)
             monitor.applyDefaultInterval(loaded.monitorIntervalSeconds)
@@ -192,6 +200,8 @@ final class AppModel {
             try await service.regenerateSSHConfig()
             hosts = try await repo.all()
             folders = try await repo.folders()
+            credentialSets = try await repo.credentialSets()
+            credentialSetUsage = try await repo.credentialSetUsage()
             forwards = try await forwardRepo.all()
             try await startTransfers(database: db, hosts: repo)
             browser = FileBrowserModel(app: self, credentials: autofillCredentials)
@@ -344,6 +354,8 @@ final class AppModel {
         do {
             hosts = try await service.repository.all()
             folders = try await service.repository.folders()
+            credentialSets = try await service.repository.credentialSets()
+            credentialSetUsage = try await service.repository.credentialSetUsage()
             forwards = try await forwardRepository?.all() ?? []
             if case .folder(let f) = sidebar, !folders.contains(f) { sidebar = .all }
             browser?.hostsChanged(hosts)
@@ -400,10 +412,31 @@ final class AppModel {
         form = .duplicate(source: host, copy: copy)
     }
 
+    /// Có password hiệu lực đã lưu không (riêng hoặc từ bộ đăng nhập). Chỉ để hiển thị.
     func hasStoredPassword(_ host: HostProfile) -> Bool {
-        guard let ref = host.credentialReference else { return false }
+        guard let ref = host.effectiveCredentialReference else { return false }
         return credentials.exists(ref: ref)
     }
+
+    /// Host có mật khẩu RIÊNG trong Keychain (form dùng để xoá/giữ mật khẩu riêng).
+    func hasOwnPassword(_ host: HostProfile) -> Bool {
+        guard let ref = host.credentialReference, !ref.isEmpty else { return false }
+        return credentials.exists(ref: ref)
+    }
+
+    /// Nguồn thông tin đăng nhập hiệu lực của UI/service Core (bộ đăng nhập, ADR-030).
+    var credentialResolver: CredentialResolver? {
+        let store = settingsStore
+        return hostRepository?.credentialResolver { store.current.defaultIdentityAgent }
+    }
+
+    func credentialSet(id: UUID?) -> CredentialSet? {
+        guard let id else { return nil }
+        return credentialSets.first { $0.id == id }
+    }
+
+    func setHasPassword(_ id: UUID) -> Bool { credentials.exists(ref: CredentialSet.passwordReference(for: id)) }
+    func setHasPassphrase(_ id: UUID) -> Bool { credentials.exists(ref: CredentialSet.passphraseReference(for: id)) }
 
     func toggleFavorite(_ host: HostProfile) async {
         guard let service else { return }
@@ -522,6 +555,10 @@ final class AppModel {
             case .copied: showToast(passwordCopiedToast)
             case .disabled:
                 showToast("Đã mở Windows App — đang tắt tự điền mật khẩu (Cài đặt), nhập mật khẩu trong Windows App")
+            case .held:
+                showToast(
+                    "Đã mở Windows App — đang tạm tắt tự điền cho máy này (chờ bạn xác nhận), nhập mật khẩu trong Windows App"
+                )
             case .failed(let why): showToast("Đã mở Windows App nhưng không copy được mật khẩu: \(why)")
             }
             await reload()
@@ -543,6 +580,7 @@ final class AppModel {
         case .none: showToast("Máy này chưa lưu mật khẩu")
         case .copied: showToast("Đã copy mật khẩu. Tự xoá sau \(settings.clipboardClearSeconds) giây.")
         case .disabled: showToast("Đang tắt tự điền mật khẩu đã lưu (Cài đặt) nên không copy.")
+        case .held: showToast("Máy này đang tạm tắt tự điền — mở chi tiết máy và bấm “Xác nhận” trước.")
         case .failed(let why): showToast("Không copy được mật khẩu: \(why)")
         }
     }
@@ -788,13 +826,14 @@ final class AppModel {
         do {
             let r = try await service.clearAllPasswords()
             await reload()
-            if r.failed > 0 {
+            if r.failed > 0 || r.setItemsFailed > 0 {
                 alert = AppAlert(
                     title: "Xoá mật khẩu chưa hoàn tất",
                     message:
-                        "Đã xoá \(r.removed) mật khẩu; \(r.failed) mục không xoá được (Keychain từ chối). Thử lại sau.")
+                        "Đã xoá \(r.removed + r.setItemsRemoved) mật khẩu; \(r.failed + r.setItemsFailed) mục không xoá được (Keychain từ chối). Thử lại sau."
+                )
             } else {
-                showToast("Đã xoá \(r.removed) mật khẩu đã lưu")
+                showToast("Đã xoá \(r.removed + r.setItemsRemoved) mật khẩu đã lưu")
             }
         } catch { show(error, title: "Không xoá được mật khẩu") }
     }

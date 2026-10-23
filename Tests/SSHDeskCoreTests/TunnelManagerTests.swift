@@ -130,6 +130,47 @@ private func alive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 }
         #expect(!all.contains("S3cret-pw"))
     }
 
+    @Test func setPasswordFillsAndHoldBlocksInTunnel() async throws {
+        guard helperAvailable else { return }
+        for hold in [false, true] {
+            let s = try TunnelScratch()
+            defer { s.cleanup() }
+            let ssh = try s.script(
+                """
+                printf "Enter passphrase for key '/keys/team': "
+                read pp
+                printf "deploy@web.example.com's password: "
+                read pw
+                printf '%s|%s' "$pp" "$pw" > '\(s.file("pw"))'
+                touch '\(s.file("ready"))'
+                sleep 60
+                """)
+            let store = InMemoryCredentialStore()
+            let setID = UUID()
+            try store.save(ref: CredentialSet.passwordReference(for: setID), password: "Set-Pw")
+            try store.save(ref: CredentialSet.passphraseReference(for: setID), password: "Set-Pp")
+            var h = host()
+            h.credentialSetID = setID
+            h.autofillHold = hold
+            let f = forward(h)
+            let m = manager(s, ssh: ssh, store: store) { _ in s.exists("ready") }
+            let (log, logTask) = record(m)
+            defer { logTask.cancel() }
+            await m.start(forward: f, host: h)
+            // Passphrase qua PTY luôn hỏi người dùng (không tự điền); password của bộ tự điền trừ khi hold.
+            #expect(await eventually { await !log.prompts().isEmpty })
+            await m.respond(forwardID: f.id, text: "typed-pp", isSecret: true)
+            if hold {
+                #expect(await eventually { await log.prompts().count >= 2 })
+                await m.respond(forwardID: f.id, text: "typed-pw", isSecret: true)
+            }
+            #expect(await eventually { await m.status(of: f.id) == .running })
+            #expect(s.read("pw") == (hold ? "typed-pp|typed-pw" : "typed-pp|Set-Pw"))
+            #expect(await log.prompts().count == (hold ? 2 : 1))
+            await m.stopAll()
+        }
+    }
+
     @Test func promptIsForwardedToUIWhenAutofillNotAllowedThenRespond() async throws {
         guard helperAvailable else { return }
         let s = try TunnelScratch()

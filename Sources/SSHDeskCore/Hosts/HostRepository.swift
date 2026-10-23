@@ -13,8 +13,8 @@ public enum HostRepositoryError: Error, Equatable {
 }
 
 public actor HostRepository {
-    private let db: Database
-    private let now: @Sendable () -> Date
+    let db: Database
+    let now: @Sendable () -> Date
 
     public init(database: Database, now: @escaping @Sendable () -> Date = { Date() }) {
         self.db = database
@@ -27,7 +27,8 @@ public actor HostRepository {
         ssh_config_alias, credential_reference, bookmarks_json, default_local_directory, \
         default_remote_directory, created_at, updated_at, last_launch_requested_at, \
         kind, rdp_username, rdp_domain, rdp_gateway, rdp_screen_mode, rdp_multi_monitor, \
-        rdp_redirect_clipboard, rdp_admin_session, identity_agent
+        rdp_redirect_clipboard, rdp_admin_session, identity_agent, credential_set_id, \
+        autofill_hold, autofill_hold_reason
         """
 
     // MARK: - Đọc
@@ -158,8 +159,8 @@ public actor HostRepository {
     // MARK: - Ghi
 
     public func insert(_ host: HostProfile) throws {
-        try host.validate()
         try db.transaction {
+            try host.validate(credentialSet: try credentialSet(for: host))
             if try fetchExists(host.id) { throw HostRepositoryError.duplicateID(host.id) }
             try checkJump(host)
             try write(host, insert: true)
@@ -169,8 +170,8 @@ public actor HostRepository {
     /// `updatedAt` luôn do repository đặt; `createdAt` giữ giá trị đã lưu.
     @discardableResult
     public func update(_ host: HostProfile) throws -> HostProfile {
-        try host.validate()
         return try db.transaction {
+            try host.validate(credentialSet: try credentialSet(for: host))
             guard let stored = try self.host(id: host.id) else {
                 throw HostRepositoryError.notFound(host.id)
             }
@@ -178,6 +179,9 @@ public actor HostRepository {
             try keepFolder(stored.project, ifLeftBy: host.project)
             var saved = host
             saved.createdAt = stored.createdAt
+            // Hold chỉ bỏ bằng `confirmAutofillHold` (ADR-026): sửa tay qua form/bản cũ không được xoá hold.
+            saved.autofillHold = stored.autofillHold
+            saved.autofillHoldReason = stored.autofillHoldReason
             saved.updatedAt = now()
             try write(saved, insert: false)
             return saved
@@ -201,7 +205,26 @@ public actor HostRepository {
                 h.lastLaunchRequestedAt = nil
                 h.createdAt = stamp
                 h.updatedAt = stamp
-                try h.validate()
+                h.autofillHold = false
+                h.autofillHoldReason = nil
+                h.credentialSetID = nil
+                // Gán bộ đăng nhập từ file (ADR-030): tạo bộ rỗng nếu chưa có, gán và HOLD tự điền
+                // tới khi người dùng xác nhận (chống chuyển password sang máy lạ qua file).
+                if let name = plan.setAssignments[host.id],
+                    let set = try credentialSet(named: name, createIfMissing: true)
+                {
+                    h.credentialSetID = set.id
+                    h.autofillHold = true
+                    h.autofillHoldReason = "Bộ đăng nhập \(set.name) được gán từ file"
+                }
+                // Bộ mới tạo còn rỗng: máy `.keyFile` lấy key từ bộ vẫn nhập được (key đặt cho bộ sau).
+                var validationSet = try credentialSet(for: h)
+                if h.authMethod == .keyFile, validationSet != nil, (h.identityFile ?? "").isEmpty,
+                    (validationSet?.identityFile ?? "").isEmpty
+                {
+                    validationSet?.identityFile = "/placeholder"
+                }
+                try h.validate(credentialSet: validationSet)
                 if try fetchExists(h.id) { throw HostRepositoryError.duplicateID(h.id) }
                 try checkJump(h)
                 try write(h, insert: true)
@@ -251,19 +274,21 @@ public actor HostRepository {
 
     /// Spec cho các host managed (host imported dùng nguyên alias gốc, không sinh Host block).
     /// `defaultIdentityAgent`: mặc định trong Cài đặt (ADR-024); rỗng/nil = không ghi directive.
+    /// User/IdentityFile/IdentityAgent lấy từ `CredentialResolution` (host > bộ đăng nhập > Cài đặt, ADR-030).
     public func sshSpecs(defaultIdentityAgent: String? = nil) throws -> [SSHHostSpec] {
         let hosts = try all()
         let byID = Dictionary(uniqueKeysWithValues: hosts.map { ($0.id, $0) })
+        let sets = Dictionary(uniqueKeysWithValues: try credentialSets().map { ($0.id, $0) })
         return hosts.filter { $0.kind == .ssh && $0.connectionMode == .managed }.map { h in
             var jump: String?
             if let jid = h.jumpHostID, let bastion = byID[jid] { jump = bastion.sshAlias }
+            let resolved = CredentialResolution.resolve(
+                host: h, set: h.credentialSetID.flatMap { sets[$0] },
+                settingsDefaultAgent: defaultIdentityAgent)
             return SSHHostSpec(
                 alias: HostProfile.managedAlias(for: h.id), hostName: h.hostName, port: h.port,
-                user: h.user,
-                identityFile: h.authMethod == .keyFile ? h.identityFile : nil,
-                jumpAlias: jump,
-                identityAgent: IdentityAgentResolution.effective(
-                    host: h.identityAgent, settingsDefault: defaultIdentityAgent))
+                user: resolved.user, identityFile: resolved.identityFile, jumpAlias: jump,
+                identityAgent: resolved.identityAgent)
         }
     }
 
@@ -309,7 +334,8 @@ public actor HostRepository {
             .text(h.kind.rawValue), .text(h.rdpUsername), opt(h.rdpDomain), opt(h.rdpGateway),
             .text(h.rdpScreenMode.rawValue), .int(h.rdpMultiMonitor ? 1 : 0),
             .int(h.rdpRedirectClipboard ? 1 : 0), .int(h.rdpAdminSession ? 1 : 0),
-            opt(h.identityAgent),
+            opt(h.identityAgent), opt(h.credentialSetID?.uuidString), .int(h.autofillHold ? 1 : 0),
+            opt(h.autofillHoldReason),
         ]
         if insert {
             let marks = Array(repeating: "?", count: values.count + 1).joined(separator: ", ")
@@ -348,7 +374,7 @@ public actor HostRepository {
             default: throw bad("cột \(i)")
             }
         }
-        guard row.count == 32, let id = UUID(uuidString: try text(0)),
+        guard row.count == 35, let id = UUID(uuidString: try text(0)),
             let env = HostEnvironment(rawValue: try text(3)),
             let mode = HostConnectionMode(rawValue: try text(7)),
             let auth = HostAuthMethod(rawValue: try text(11)),
@@ -371,7 +397,8 @@ public actor HostRepository {
             identityFile: optText(12), identityAgent: optText(31),
             jumpHostID: optText(13).flatMap(UUID.init(uuidString:)),
             sshConfigPath: optText(14), sshConfigAlias: optText(15),
-            credentialReference: optText(16), remoteBookmarks: marks,
+            credentialReference: optText(16), credentialSetID: optText(32).flatMap(UUID.init(uuidString:)),
+            autofillHold: try int(33) != 0, autofillHoldReason: optText(34), remoteBookmarks: marks,
             defaultLocalDirectory: try text(18), defaultRemoteDirectory: try text(19),
             createdAt: try date(20), updatedAt: try date(21), lastLaunchRequestedAt: launch)
     }

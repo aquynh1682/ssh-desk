@@ -68,7 +68,7 @@ public struct SSHKeyInstaller: Sendable {
     public func start() async throws -> KeyTaskSession {
         let latch = AutofillLatch()
         var autofill: (@Sendable (PromptKind) -> String?)?
-        if let host, let ref = host.credentialReference, let credentials {
+        if let host, let ref = host.autofillCredentialReference, let credentials {
             autofill = { kind in
                 guard
                     PasswordAutofillPolicy.shouldAutofill(

@@ -36,7 +36,8 @@ public enum DuplicateHandling: String, Sendable, CaseIterable {
 }
 
 /// Một máy chủ trong file. Mọi giá trị enum là chuỗi để một giá trị lạ chỉ làm hỏng đúng máy đó.
-/// Không có trường nào cho password / credentialReference.
+/// Không có trường nào cho password / credentialReference. `credentialSet` chỉ là TÊN bộ đăng nhập (ADR-030):
+/// không password/passphrase/ref và không đường dẫn key/agent của bộ (bộ là cấu hình của từng máy).
 struct ExchangeHost: Codable, Equatable {
     struct Bookmark: Codable, Equatable {
         var name: String
@@ -74,6 +75,8 @@ struct ExchangeHost: Codable, Equatable {
     var identityFile: String?
     /// Đường dẫn socket agent (không secret); file cũ thiếu trường này vẫn nhập được.
     var identityAgent: String?
+    /// Tên bộ đăng nhập (ADR-030); file cũ thiếu trường này vẫn nhập được.
+    var credentialSet: String?
     var jumpHostId: String?
     var sshConfigPath: String?
     var sshConfigAlias: String?
@@ -89,7 +92,7 @@ struct ExchangeHost: Codable, Equatable {
         id: String, displayName: String, folder: String, environment: String, tags: [String],
         notes: String, isFavorite: Bool, kind: String, connectionMode: String, hostName: String,
         port: Int, user: String, authMethod: String, identityFile: String?, identityAgent: String? = nil,
-        jumpHostId: String?,
+        credentialSet: String? = nil, jumpHostId: String?,
         sshConfigPath: String?, sshConfigAlias: String?, bookmarks: [Bookmark],
         defaultLocalDirectory: String, defaultRemoteDirectory: String, rdp: RDP?,
         needsReauth: Bool, portForwards: [Forward]
@@ -109,6 +112,7 @@ struct ExchangeHost: Codable, Equatable {
         self.authMethod = authMethod
         self.identityFile = identityFile
         self.identityAgent = identityAgent
+        self.credentialSet = credentialSet
         self.jumpHostId = jumpHostId
         self.sshConfigPath = sshConfigPath
         self.sshConfigAlias = sshConfigAlias
@@ -138,6 +142,7 @@ struct ExchangeHost: Codable, Equatable {
         authMethod = try c.decodeIfPresent(String.self, forKey: .authMethod) ?? "agent"
         identityFile = try c.decodeIfPresent(String.self, forKey: .identityFile)
         identityAgent = try c.decodeIfPresent(String.self, forKey: .identityAgent)
+        credentialSet = try c.decodeIfPresent(String.self, forKey: .credentialSet)
         jumpHostId = try c.decodeIfPresent(String.self, forKey: .jumpHostId)
         sshConfigPath = try c.decodeIfPresent(String.self, forKey: .sshConfigPath)
         sshConfigAlias = try c.decodeIfPresent(String.self, forKey: .sshConfigAlias)
@@ -151,7 +156,7 @@ struct ExchangeHost: Codable, Equatable {
 
     private enum Key: String, CodingKey {
         case id, displayName, folder, environment, tags, notes, isFavorite, kind, connectionMode
-        case hostName, port, user, authMethod, identityFile, identityAgent, jumpHostId, sshConfigPath
+        case hostName, port, user, authMethod, identityFile, identityAgent, credentialSet, jumpHostId, sshConfigPath
         case sshConfigAlias, bookmarks, defaultLocalDirectory, defaultRemoteDirectory, rdp
         case needsReauth, portForwards
     }
@@ -202,10 +207,11 @@ public enum HostExchange {
     }
 
     /// Dựng JSON. `needsReauth`: id các máy đang có mật khẩu lưu (chỉ để đánh dấu, không kèm mật khẩu).
+    /// `setNames`: id bộ đăng nhập → tên (ADR-030); chỉ TÊN được xuất.
     /// KHÔNG BAO GIỜ ghi `credentialReference`/mật khẩu: DTO không có trường đó.
     public static func export(
         hosts: [HostProfile], forwards: [PortForward], folders: [String],
-        needsReauth: Set<UUID> = [], now: Date = Date()
+        needsReauth: Set<UUID> = [], setNames: [UUID: String] = [:], now: Date = Date()
     ) throws -> Data {
         let ids = Set(hosts.map(\.id))
         let byHost = Dictionary(grouping: forwards.filter { ids.contains($0.hostID) }, by: \.hostID)
@@ -224,6 +230,7 @@ public enum HostExchange {
                 connectionMode: h.connectionMode.rawValue, hostName: h.hostName, port: h.port,
                 user: h.user, authMethod: h.authMethod.rawValue, identityFile: h.identityFile,
                 identityAgent: h.identityAgent,
+                credentialSet: h.credentialSetID.flatMap { setNames[$0] },
                 // Bastion ngoài tập xuất: bỏ liên kết (người gọi nên dùng exportSet để kèm bastion).
                 jumpHostId: h.jumpHostID.flatMap { ids.contains($0) ? $0.uuidString.lowercased() : nil },
                 sshConfigPath: h.sshConfigPath, sshConfigAlias: h.sshConfigAlias,
@@ -343,6 +350,13 @@ public enum HostExchange {
         public var forwards: [PortForward]
         public var foldersToCreate: [String]
         public var fileWarnings: [String]
+        /// id máy MỚI → tên bộ đăng nhập được gán từ file (ADR-030). Ghi bằng `HostRepository.applyImport`:
+        /// tạo bộ rỗng nếu chưa có, gán, và đặt `autofill_hold` (gán từ file không bao giờ tự điền ngay).
+        public var setAssignments: [UUID: String] = [:]
+        /// Tên bộ (đã chuẩn hoá) chưa có và sẽ được tạo rỗng.
+        public var setsToCreate: [String] = []
+        /// Hook cho xem trước / K4a: máy sẽ bị hold tự điền sau khi nhập (= khoá của `setAssignments`).
+        public var hostsNeedingHold: Set<UUID> { Set(setAssignments.keys) }
 
         public var newCount: Int { entries.filter { $0.outcome == .new }.count }
         public var duplicateCount: Int {
@@ -394,6 +408,7 @@ public enum HostExchange {
             [
                 ("tên", x.displayName), ("thư mục", x.folder), ("host", x.hostName), ("user", x.user),
                 ("đường dẫn key", x.identityFile ?? ""), ("agent", x.identityAgent ?? ""),
+                ("bộ đăng nhập", x.credentialSet ?? ""),
                 ("alias", x.sshConfigAlias ?? ""),
                 ("đường dẫn SSH config", x.sshConfigPath ?? ""),
                 ("thư mục local mặc định", x.defaultLocalDirectory),
@@ -435,9 +450,12 @@ public enum HostExchange {
         // Validator của form: tin nhắn lỗi theo trường.
         let draft = HostDraft(host: profile)
         let base: HostProfile? = mode == .existingSSHConfigAlias ? profile : nil
-        let problems = draft.errors(basedOn: base)
+        // Host key lấy key từ bộ đăng nhập: bộ (cấu hình của máy này) có thể chưa có key lúc nhập → chấp nhận.
+        let hasSetName = !(x.credentialSet ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        let placeholder = hasSetName ? CredentialSet(name: "placeholder", identityFile: "/placeholder") : nil
+        let problems = draft.errors(basedOn: base, credentialSet: placeholder)
         if let first = problems.values.sorted().first { return .failure(.init(first)) }
-        do { try profile.validate() } catch let e as HostValidationError {
+        do { try profile.validate(credentialSet: placeholder) } catch let e as HostValidationError {
             return .failure(.init(HostDraft.describe(e).1))
         } catch { return .failure(.init("Dữ liệu không hợp lệ.")) }
         return .success(profile)
@@ -453,7 +471,8 @@ public enum HostExchange {
     /// forward chỉ giữ khi hợp lệ và cổng local không đụng forward đã có / forward khác trong file.
     public static func plan(
         file: ExchangeFile, existingHosts: [HostProfile], existingFolders: [String],
-        existingForwards: [PortForward], duplicates: DuplicateHandling = .skip,
+        existingForwards: [PortForward], existingSetNames: [String] = [],
+        duplicates: DuplicateHandling = .skip,
         now: Date = Date(), makeID: () -> UUID = { UUID() }
     ) -> Plan {
         struct Row {
@@ -604,6 +623,39 @@ public enum HostExchange {
             }
         }
 
+        // 4b) Bộ đăng nhập (ADR-030): chỉ gán TÊN; bộ chưa có sẽ được tạo rỗng; máy bị hold tới khi người dùng xác nhận.
+        var setAssignments: [UUID: String] = [:]
+        var setsToCreate: [String] = []
+        for i in rows.indices where rows[i].willImport {
+            guard let p = rows[i].profile,
+                let raw = rows[i].x.credentialSet?.trimmingCharacters(in: .whitespacesAndNewlines),
+                !raw.isEmpty
+            else { continue }
+            guard let name = try? CredentialSet.normalizedName(raw) else {
+                rows[i].warnings.append("Tên bộ đăng nhập không hợp lệ: bỏ qua bộ.")
+                continue
+            }
+            let usesSet =
+                p.connectionMode == .managed && p.authMethod != .agent
+                && (p.kind == .ssh || p.authMethod == .interactive)
+            guard usesSet else {
+                rows[i].warnings.append("Bỏ bộ đăng nhập “\(name)”: kiểu xác thực của máy này không dùng bộ.")
+                continue
+            }
+            setAssignments[p.id] = name
+            let known =
+                existingSetNames.contains { CredentialSet.sameName($0, name) }
+                || setsToCreate.contains { CredentialSet.sameName($0, name) }
+            if !known {
+                setsToCreate.append(name)
+                rows[i].warnings.append("Sẽ tạo bộ đăng nhập rỗng “\(name)” — cần nhập mật khẩu/key cho bộ.")
+            } else {
+                rows[i].warnings.append(
+                    "Gán bộ đăng nhập “\(name)”: cần có mật khẩu/key của bộ (nhập trong Cài đặt → Bảo mật).")
+            }
+            rows[i].warnings.append("Tự điền mật khẩu tạm tắt cho máy này tới khi bạn xác nhận.")
+        }
+
         // 5) Cảnh báo mật khẩu + tổng hợp.
         for i in rows.indices where rows[i].willImport && rows[i].x.needsReauth {
             rows[i].warnings.append("Cần nhập lại mật khẩu (mật khẩu không nằm trong file).")
@@ -651,9 +703,12 @@ public enum HostExchange {
             }
             return c
         }
-        return Plan(
+        var plan = Plan(
             entries: entries, hosts: fixed, forwards: forwards,
             foldersToCreate: HostFolders.sortedUnique(toCreate), fileWarnings: fileWarnings)
+        plan.setAssignments = setAssignments
+        plan.setsToCreate = setsToCreate
+        return plan
     }
 
     // MARK: - Tiện ích

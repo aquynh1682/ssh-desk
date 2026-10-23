@@ -1,12 +1,13 @@
 import AskpassKit
+import CredentialBackend
 import Darwin
 import Foundation
-import Security
 
 // Helper SSH_ASKPASS của SSH Desk. Chỉ nhận: argv[1] (prompt của ssh) và env
 // SSHDESK_HOST_REF / SSH_ASKPASS_PROMPT. Không nhận lệnh nào khác.
 // - Trả password Keychain CHỈ khi: cha là /usr/bin/ssh, prompt là password tài khoản, có tham chiếu,
-//   và đây là lần đầu cho tiến trình ssh cha này.
+//   và đây là lần đầu cho tiến trình ssh cha này. Passphrase key (ADR-030): thêm SSHDESK_KEY_REF/KEY_PATH,
+//   chỉ trả khi prompt đúng `Enter passphrase for key '<path>':` với path trùng KEY_PATH (lần đầu).
 // - Mọi trường hợp khác: hỏi người dùng trên /dev/tty. Không mở được tty -> exit 1.
 // Không bao giờ ghi password ra stderr/log/file.
 
@@ -71,30 +72,22 @@ func removeOldMarkers(in dir: String) {
     }
 }
 
-/// Đánh dấu nguyên tử "đã dùng password cho tiến trình ssh cha này". Lỗi nào cũng coi là đã dùng.
-func claimPasswordUse() -> Bool {
+/// Đánh dấu nguyên tử "đã dùng password (hoặc passphrase) cho tiến trình ssh cha này". Lỗi nào cũng coi là đã dùng.
+/// Password và passphrase có marker riêng (mỗi loại tối đa một lần mỗi tiến trình ssh).
+func claimSecretUse(kind: String) -> Bool {
     let ppid = getppid()
     guard let dir = markerDirectory(), let started = processStartTime(ppid) else { return false }
     removeOldMarkers(in: dir)
-    let fd = open("\(dir)/used-\(ppid)-\(started)", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+    let name = kind.isEmpty ? "used-\(ppid)-\(started)" : "used-\(kind)-\(ppid)-\(started)"
+    let fd = open("\(dir)/\(name)", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
     guard fd >= 0 else { return false }
     close(fd)
     return true
 }
 
-func readKeychainPassword(ref: String) -> String? {
-    let query: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrService as String: CredentialConstants.service,
-        kSecAttrAccount as String: ref,
-        kSecReturnData as String: true,
-        kSecMatchLimit as String: kSecMatchLimitOne,
-    ]
-    var out: CFTypeRef?
-    guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
-        let data = out as? Data
-    else { return nil }
-    return String(decoding: data, as: UTF8.self)
+/// Đọc qua backend Keychain dùng chung với app (ADR-004b): helper không tự viết truy vấn Keychain.
+func readKeychainSecret(ref: String) -> String? {
+    KeychainBackend(service: CredentialConstants.service).read(account: ref)
 }
 
 // MARK: - tty
@@ -155,12 +148,15 @@ let prompt = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "Passw
 let action = AskpassDecision.decide(
     prompt: prompt, promptType: environment("SSH_ASKPASS_PROMPT"),
     hostRef: environment(CredentialConstants.hostRefEnv),
-    parentPath: parentExecutablePath(getppid()), claimUse: claimPasswordUse)
+    keyRef: environment(CredentialConstants.keyRefEnv),
+    keyPath: environment(CredentialConstants.keyPathEnv),
+    parentPath: parentExecutablePath(getppid()),
+    claimUse: { claimSecretUse(kind: "") }, claimKeyUse: { claimSecretUse(kind: "key") })
 
 switch action {
-case .answerFromKeychain(let ref):
-    if let password = readKeychainPassword(ref: ref) {
-        writeAll(1, password + "\n")
+case .answerFromKeychain(let ref), .answerPassphraseFromKeychain(let ref):
+    if let secret = readKeychainSecret(ref: ref) {
+        writeAll(1, secret + "\n")
         exit(0)
     }
     // Không có item / không đọc được: hỏi người dùng như ssh thường.

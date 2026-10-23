@@ -46,14 +46,16 @@ extension AppModel {
         let set = HostExchange.exportSet(selected: selected, all: hosts)
         let forwards = forwards
         let store = credentials
+        let setNames = Dictionary(uniqueKeysWithValues: credentialSets.map { ($0.id, $0.name) })
         Task {
             do {
                 let data = try await Task.detached {
                     let reauth = Set(
-                        set.filter { h in h.credentialReference.map { store.exists(ref: $0) } ?? false }
+                        set.filter { h in h.effectiveCredentialReference.map { store.exists(ref: $0) } ?? false }
                             .map(\.id))
                     return try HostExchange.export(
-                        hosts: set, forwards: forwards, folders: folderNames, needsReauth: reauth)
+                        hosts: set, forwards: forwards, folders: folderNames, needsReauth: reauth,
+                        setNames: setNames)
                 }.value
                 try HostExchange.write(data, to: url)
                 showToast("Đã xuất \(set.count) máy chủ → \(url.lastPathComponent)")
@@ -143,7 +145,8 @@ struct HostImportPreviewSheet: View {
     private func recompute() {
         plan = HostExchange.plan(
             file: preview.file, existingHosts: model.hosts, existingFolders: model.folders,
-            existingForwards: model.forwards, duplicates: duplicates)
+            existingForwards: model.forwards, existingSetNames: model.credentialSets.map(\.name),
+            duplicates: duplicates)
     }
 
     private func summary(_ plan: HostExchange.Plan) -> some View {
@@ -211,7 +214,8 @@ struct HostImportPreviewSheet: View {
         // Lập lại kế hoạch ngay trước khi ghi (dữ liệu có thể đã đổi từ lúc mở sheet).
         let fresh = HostExchange.plan(
             file: preview.file, existingHosts: model.hosts, existingFolders: model.folders,
-            existingForwards: model.forwards, duplicates: duplicates)
+            existingForwards: model.forwards, existingSetNames: model.credentialSets.map(\.name),
+            duplicates: duplicates)
         importing = true
         let ok = await model.confirmExchangeImport(fresh)
         importing = false

@@ -138,6 +138,8 @@ struct SidebarView: View {
                 item: .folder(c.name), dropFolder: c.name
             ) {
                 Button("Đổi tên…") { model.folderDialog = .rename(c.name) }
+                Button("Gán bộ đăng nhập…") { model.assignSetTarget = AssignSetTarget(folder: c.name) }
+                    .disabled(model.credentialSets.isEmpty)
                 Button("Xoá thư mục…", role: .destructive) {
                     model.folderDialog = .confirmDelete(c.name)
                 }

@@ -109,7 +109,7 @@ public enum HostPresentation {
 
     /// Các dòng thẻ "Kết nối". Chỉ chứa dữ liệu không bí mật (tên file khoá, không phải nội dung).
     public static func connectionRows(
-        _ host: HostProfile, jumpHostName: String?, hasSavedPassword: Bool = false
+        _ host: HostProfile, jumpHostName: String?, credentialSet: CredentialSet? = nil, hasSavedPassword: Bool = false
     ) -> [ConnectionRow] {
         if host.kind == .windowsRDP {
             var rows = [
@@ -142,7 +142,12 @@ public enum HostPresentation {
                 ConnectionRow(
                     label: "Xác thực", value: authLabel(host.authMethod), copyable: false),
             ]
-            if host.authMethod == .keyFile, let f = host.identityFile, !f.isEmpty {
+            // Key hiệu lực: của host, hoặc lấy từ bộ đăng nhập (ADR-030).
+            if host.authMethod == .keyFile,
+                let f = CredentialResolution.resolve(
+                    host: host, set: credentialSet, settingsDefaultAgent: nil
+                ).identityFile, !f.isEmpty
+            {
                 rows.append(
                     ConnectionRow(
                         label: "Key", value: URL(fileURLWithPath: f).lastPathComponent,

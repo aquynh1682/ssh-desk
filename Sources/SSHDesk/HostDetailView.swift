@@ -23,6 +23,7 @@ struct HostDetailView: View {
                     isWindows
                         ? "Mở kết nối RDP trong Windows App (Return khi đang ở danh sách)"
                         : "Mở phiên SSH trong Warp (Return khi đang ở danh sách)")
+                loginCard
                 connectionCard
                 if isWindows {
                     Text(
@@ -112,9 +113,59 @@ struct HostDetailView: View {
         }
     }
 
+    /// Nguồn mật khẩu, cảnh báo key mất và banner hold (ADR-026/030).
+    @ViewBuilder
+    private var loginCard: some View {
+        let source = model.passwordSource(for: host)
+        let missingKey = model.missingKeyPath(for: host)
+        let ownOverrides: Bool = { if case .ownOverridesSet = source { return true } else { return false } }()
+        if host.autofillHold || source != .none || missingKey != nil || host.credentialSetID != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Đăng nhập").font(.system(size: 14, weight: .semibold))
+                if source != .none {
+                    HStack {
+                        Label(source.label, systemImage: "key.fill").font(.system(size: 13))
+                        Spacer(minLength: 0)
+                        if ownOverrides || source == .own {
+                            Button("Xoá mật khẩu riêng") {
+                                Task { _ = await model.clearPassword(hostID: host.id) }
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                } else if let set = model.credentialSet(id: host.credentialSetID) {
+                    Text("Bộ đăng nhập: \(set.name) (chưa có mật khẩu)")
+                        .font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
+                }
+                if let missingKey {
+                    Label("Không thấy file key \(missingKey)", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12.5)).foregroundStyle(Theme.amber)
+                }
+                if host.autofillHold {
+                    HStack(alignment: .top) {
+                        Image(systemName: "hand.raised.fill").foregroundStyle(Theme.amber)
+                        Text(
+                            "\(host.autofillHoldReason ?? "Cần xác nhận"). Đã tạm tắt tự điền mật khẩu cho máy này."
+                        )
+                        .font(.system(size: 12.5))
+                        Spacer(minLength: 0)
+                        Button("Xác nhận") { Task { await model.confirmAutofillHold(host) } }
+                            .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(Theme.amber.opacity(0.14), in: RoundedRectangle(cornerRadius: 9))
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardStyle()
+        }
+    }
+
     private var connectionCard: some View {
         let rows = HostPresentation.connectionRows(
             host, jumpHostName: model.name(of: host.jumpHostID),
+            credentialSet: model.credentialSet(id: host.credentialSetID),
             hasSavedPassword: isWindows && model.hasStoredPassword(host))
         return VStack(alignment: .leading, spacing: 0) {
             Text("Kết nối").font(.system(size: 14, weight: .semibold))

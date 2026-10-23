@@ -44,7 +44,9 @@ final class ManagerHarness: @unchecked Sendable {
 
     init(
         script: String = "exec \(ManagerHarness.sftp)\n", concurrency: Int = 1,
-        credentials: (any CredentialStore)? = nil, storedPassword: String? = nil
+        credentials: (any CredentialStore)? = nil, storedPassword: String? = nil,
+        credentialSet: CredentialSet? = nil, setPassword: String? = nil, setPassphrase: String? = nil,
+        hold: Bool = false
     ) async throws {
         let fm = FileManager.default
         root = dirs.url.appendingPathComponent("work")
@@ -63,8 +65,20 @@ final class ManagerHarness: @unchecked Sendable {
             h.credentialReference = "ref-" + UUID().uuidString
             try credentials.save(ref: h.credentialReference ?? "", password: storedPassword)
         }
+        if let credentialSet {
+            let created = try await hostRepo.createCredentialSet(credentialSet)
+            h.credentialSetID = created.id
+            if created.identityFile != nil { h.authMethod = .keyFile }
+            if let credentials, let setPassword {
+                try credentials.save(ref: created.passwordReference, password: setPassword)
+            }
+            if let credentials, let setPassphrase {
+                try credentials.save(ref: created.passphraseReference, password: setPassphrase)
+            }
+        }
         host = h
         try await hostRepo.insert(host)
+        if hold { try await hostRepo.setAutofillHold(ids: [host.id], reason: "test hold") }
         manager = TransferManager(
             repository: repo, hosts: hostRepo, concurrency: concurrency, extraSSHProgram: fake,
             credentials: credentials)

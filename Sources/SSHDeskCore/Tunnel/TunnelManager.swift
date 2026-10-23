@@ -231,7 +231,7 @@ public actor TunnelManager {
                 return
             }
             if PasswordAutofillPolicy.shouldAutofill(prompt: kind, host: e.host, alreadyFilled: e.filled),
-                let ref = e.host.credentialReference
+                let ref = e.host.autofillCredentialReference
             {
                 e.filled = true
                 let store = credentials

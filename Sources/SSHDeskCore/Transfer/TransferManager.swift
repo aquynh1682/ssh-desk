@@ -466,7 +466,7 @@ public actor TransferManager {
         }
         // Password lần ĐẦU, khớp `PasswordAutofillPolicy` (không bastion, đúng user@host): tự điền,
         // không hiện prompt. Lần sau (sai) hoặc prompt của bastion hỏi UI. Passphrase / MFA / host key luôn hỏi UI.
-        if let host = run.autoFillHost, let ref = host.credentialReference,
+        if let host = run.autoFillHost, let ref = host.autofillCredentialReference,
             PasswordAutofillPolicy.shouldAutofill(
                 prompt: kind, host: host, alreadyFilled: run.autoFilled)
         {
