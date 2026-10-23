@@ -278,6 +278,7 @@ public struct HostDraft: Equatable, Sendable {
             return (field, "Giá trị không được chứa ký tự điều khiển và tối đa \(HostProfile.maxRDPFieldLength) ký tự.")
         case .invalidRDPGateway:
             return (.rdpGateway, "RD Gateway phải có dạng tên-máy hoặc tên-máy:cổng.")
+        case .ephemeralReference: return (.general, "Tham chiếu mật khẩu tạm không được lưu.")
         }
     }
 }

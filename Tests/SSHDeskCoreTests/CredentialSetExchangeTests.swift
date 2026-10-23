@@ -110,6 +110,8 @@ private func swiftFiles(under root: URL) -> [URL] {
         "HostProfile.swift", "HostRepository.swift", "CredentialResolution.swift", "ConnectionService.swift",
         "HostDraft.swift", "HostExchange.swift", "AskpassDecision.swift", "CLIHostList.swift",
         "AppModel.swift", "CredentialMigration.swift", "CredentialSetViews.swift",
+        // ADR-029: ghi ref tạm lên bản sao khi kết nối / gỡ mật khẩu riêng hỏng khi gán bộ.
+        "EphemeralPasswordVault.swift", "PasswordVerifier.swift", "PasswordEntryService.swift",
     ]
     var offenders: [String] = []
     for f in swiftFiles(under: sourcesRoot()) where !allowed.contains(f.lastPathComponent) {

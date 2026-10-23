@@ -65,6 +65,7 @@ public actor TransferManager {
     private let progressInterval: TimeInterval
     private let ctty: URL?
     private let credentials: (any CredentialStore)?
+    private let hostAdjuster: (@Sendable (HostProfile) -> HostProfile)?
 
     private var queue: [TransferJob] = []
     private var running: [UUID: Run] = [:]
@@ -79,8 +80,10 @@ public actor TransferManager {
         environment: [String: String] = ProcessEnvironment.inherited(),
         progressInterval: TimeInterval = 0.5,
         controllingTTYHelper: URL? = nil,
-        credentials: (any CredentialStore)? = nil
+        credentials: (any CredentialStore)? = nil,
+        hostAdjuster: (@Sendable (HostProfile) -> HostProfile)? = nil
     ) {
+        self.hostAdjuster = hostAdjuster
         self.credentials = credentials
         self.ctty = controllingTTYHelper
         self.repository = repository
@@ -348,7 +351,7 @@ public actor TransferManager {
         }
 
         if credentials != nil {
-            run.autoFillHost = try? await hosts.host(id: job.hostID)
+            run.autoFillHost = (try? await hosts.host(id: job.hostID)).map { hostAdjuster?($0) ?? $0 }
         }
 
         if let partial { try? await repository.setTempPartialPath(id: job.id, partial) }

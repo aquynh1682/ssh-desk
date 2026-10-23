@@ -132,6 +132,12 @@ final class AppModel {
     private let sealedStore: SecureEnclaveCredentialStore
     /// Kho bí mật dành cho MỌI chỗ tự điền (PTY, tunnel, phiên SFTP, cài key): trả nil khi cài đặt tắt tự điền.
     let autofillCredentials: any CredentialStore
+    /// Mật khẩu chỉ trong bộ nhớ cho phiên/job không tích "Lưu" (ADR-029); bỏ khi phiên đóng.
+    let ephemeralVault = EphemeralPasswordVault()
+    /// Hàng đợi sheet "Nhập mật khẩu" (mỗi lúc một sheet, ADR-019/029).
+    let passwordPrompts = PasswordPromptCenter()
+    /// Luồng "kiểm tra đăng nhập rồi lưu" (ADR-029); có sau khi dữ liệu nạp xong.
+    private(set) var passwordEntry: PasswordEntryService?
     /// Bản cài đặt dùng chung với các service Core (ADR-021).
     let settingsStore = SettingsStore()
     /// Cài đặt hiện hành cho UI (đổi qua `updateSettings`).
@@ -170,7 +176,9 @@ final class AppModel {
         credentials = store
         sealedStore = store
         let settingsStore = self.settingsStore
-        autofillCredentials = AutofillGatedCredentialStore(base: store) {
+        autofillCredentials = AutofillGatedCredentialStore(
+            base: EphemeralOverlayCredentialStore(base: store, vault: ephemeralVault)
+        ) {
             settingsStore.current.autofillEnabled
         }
     }
@@ -199,6 +207,11 @@ final class AppModel {
                 askpassHelper: AskpassHelper.defaultURL(), settings: settingsStore)
             self.service = service
             hostRepository = repo
+            passwordEntry = PasswordEntryService(
+                connection: service,
+                verifier: PasswordVerifier(
+                    configPath: paths.sshConfigURL.path, helper: ControllingTTYHelper.defaultURL()),
+                credentials: credentials)
             analystRepository = AnalystRunRepository(
                 database: db, retention: loaded.analystRetention)
             monitor.applyDefaultInterval(loaded.monitorIntervalSeconds)
@@ -230,7 +243,8 @@ final class AppModel {
         let manager = TransferManager(
             repository: repository, hosts: repo, concurrency: settings.transferConcurrency,
             controllingTTYHelper: ControllingTTYHelper.defaultURL(),
-            credentials: autofillCredentials)
+            credentials: autofillCredentials,
+            hostAdjuster: { [vault = ephemeralVault] host in vault.adjusted(host) })
         transferRepository = repository
         transfers = manager
         // Job dở dang của lần chạy trước → "Bị gián đoạn" (hiện trong lịch sử).
@@ -252,7 +266,10 @@ final class AppModel {
                 jobs.insert(job, at: 0)
             }
             prompts.reconcile(job)
-            if case .jobFinished = event { browser?.jobFinished(job) }
+            if case .jobFinished = event {
+                ephemeralVault.release(hostID: job.hostID, owner: "job-" + job.id.uuidString)
+                browser?.jobFinished(job)
+            }
         case .authPrompt(let id, let kind):
             prompts.enqueue(jobID: id, kind: kind)
         }
@@ -540,8 +557,12 @@ final class AppModel {
         } catch { show(error, title: "Không chuyển được máy chủ") }
     }
 
-    func openInWarp(_ host: HostProfile, newWindow: Bool = false) async {
+    func openInWarp(_ original: HostProfile, newWindow: Bool = false) async {
         guard let service else { return }
+        // ADR-029: máy chưa lưu mật khẩu -> sheet hỏi (sau xác nhận PROD của đường URL/CLI, vì xác nhận nằm ở người gọi).
+        let answer = await requestMissingPassword(for: original, purpose: .warp, owner: nil)
+        if case .cancelled = answer { return }
+        let host = hosts.first(where: { $0.id == original.id }) ?? original
         banner = nil
         let report = await service.openInWarpReport(host, newWindow: newWindow)
         switch report.result {
@@ -566,12 +587,22 @@ final class AppModel {
         if host.kind == .windowsRDP { await openInWindowsApp(host) } else { await openInWarp(host) }
     }
 
-    func openInWindowsApp(_ host: HostProfile) async {
+    func openInWindowsApp(_ original: HostProfile) async {
         guard let service else { return }
+        let answer = await requestMissingPassword(for: original, purpose: .windows, owner: nil)
+        if case .cancelled = answer { return }
+        let host = hosts.first(where: { $0.id == original.id }) ?? original
         banner = nil
         let report = await service.openInWindowsAppReport(host)
         switch report.result {
         case .requested:
+            // Không tích lưu (ADR-029/018): copy MỘT lần, tự xoá; password không được lưu ở đâu.
+            if case .windowsCopy(let password) = answer {
+                secretClipboard.copy(password, clearAfter: TimeInterval(settings.clipboardClearSeconds))
+                showToast(passwordCopiedToast)
+                await reload()
+                return
+            }
             switch report.passwordCopy {
             case .none: showToast("Đã yêu cầu Windows App mở kết nối — nhập mật khẩu trong Windows App")
             case .copied: showToast(passwordCopiedToast)
@@ -661,24 +692,34 @@ final class AppModel {
 
     /// Trả true nếu job đã vào hàng đợi (sheet đóng).
     func startDownload(_ form: DownloadForm, host: HostProfile) async -> Bool {
-        do { return try await enqueue(form.makeJob(host: host, configPath: configPath)) } catch {
+        do { return try await enqueue(form.makeJob(host: host, configPath: configPath), host: host) } catch {
             show(error, title: "Không bắt đầu được tải về")
             return false
         }
     }
 
     func startUpload(_ form: UploadForm, host: HostProfile) async -> Bool {
-        do { return try await enqueue(form.makeJob(host: host, configPath: configPath)) } catch {
+        do { return try await enqueue(form.makeJob(host: host, configPath: configPath), host: host) } catch {
             show(error, title: "Không bắt đầu được tải lên")
             return false
         }
     }
 
-    private func enqueue(_ job: TransferJob) async throws -> Bool {
+    private func enqueue(_ job: TransferJob, host: HostProfile) async throws -> Bool {
         guard let transfers else { return false }
-        // Config có thể cũ so với hồ sơ: sinh lại trước khi scp đọc.
-        try await service?.regenerateSSHConfig()
-        try await transfers.enqueue(job)
+        // ADR-029: máy chưa lưu mật khẩu -> hỏi (sheet lồng trong sheet Tải về/Tải lên). Huỷ = sheet vẫn mở.
+        let owner = "job-" + job.id.uuidString
+        guard await preparePasswordForSession(host, owner: owner, presenter: .transferSheet) else {
+            return false
+        }
+        do {
+            // Config có thể cũ so với hồ sơ: sinh lại trước khi scp đọc.
+            try await service?.regenerateSSHConfig()
+            try await transfers.enqueue(job)
+        } catch {
+            ephemeralVault.release(hostID: host.id, owner: owner)
+            throw error
+        }
         sidebar = .transfers
         return true
     }

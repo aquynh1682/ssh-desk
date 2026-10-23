@@ -100,9 +100,10 @@ final class MonitorModel {
         token = myToken
         states = [:]
         isRunning = true
+        let vault = app.ephemeralVault
         let connector = SessionConnector(
             configPath: app.paths.sshConfigURL.path, credentials: app.autofillCredentials,
-            helper: ControllingTTYHelper.defaultURL())
+            helper: ControllingTTYHelper.defaultURL(), hostAdjuster: { vault.adjusted($0) })
         let provider = PooledMonitorSessions(pool: app.sessionPool, connector: connector) {
             [weak self] host, kind, respond in
             Task { @MainActor in
@@ -125,7 +126,21 @@ final class MonitorModel {
                 return
             }
             guard token == myToken, isRunning else { return }
-            await coord.start(hosts: hosts, interval: seconds)
+            // ADR-029/019: máy chưa lưu mật khẩu -> hỏi TUẦN TỰ (không bật nhiều sheet); huỷ = bỏ qua máy đó.
+            let (runnable, skipped) = await app.preparePasswords(for: hosts, owner: Self.passwordOwner)
+            guard token == myToken, isRunning else {
+                app.ephemeralVault.releaseAll(owner: Self.passwordOwner)
+                return
+            }
+            for host in skipped {
+                states[host.id] = MonitorHostState(
+                    hostID: host.id, status: .failed("Bỏ qua — chưa nhập mật khẩu"))
+            }
+            guard !runnable.isEmpty else {
+                stop()
+                return
+            }
+            await coord.start(hosts: runnable, interval: seconds)
         }
     }
 
@@ -145,8 +160,15 @@ final class MonitorModel {
         token = UUID()
         let coord = coordinator
         coordinator = nil
-        Task { await coord?.stop() }
+        // Mật khẩu không tích lưu bỏ cùng phiên Monitor (ADR-029).
+        let vault = app?.ephemeralVault
+        Task {
+            await coord?.stop()
+            vault?.releaseAll(owner: Self.passwordOwner)
+        }
     }
+
+    private static let passwordOwner = "monitor"
 
     /// Chu kỳ mặc định từ Cài đặt (ADR-021); đang chạy thì áp dụng luôn.
     func applyDefaultInterval(_ seconds: Int) { setInterval(seconds) }
@@ -171,6 +193,7 @@ final class MonitorModel {
         let coord = coordinator
         coordinator = nil
         await coord?.stop()
+        app?.ephemeralVault.releaseAll(owner: Self.passwordOwner)
     }
 
     // MARK: - Prompt xác thực

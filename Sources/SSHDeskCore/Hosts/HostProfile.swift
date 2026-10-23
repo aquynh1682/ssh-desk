@@ -61,6 +61,8 @@ public enum HostValidationError: Error, Equatable {
     case invalidRDPGateway(String)
     /// `IdentityAgent` không hợp lệ (ADR-024).
     case invalidIdentityAgent(IdentityAgentError)
+    /// `credentialReference` thuộc kho tạm trong bộ nhớ (ADR-029): không bao giờ được lưu vào DB.
+    case ephemeralReference
 }
 
 /// Hồ sơ máy chủ. Không bao giờ chứa password/passphrase — chỉ `credentialReference` trỏ vào Keychain.
@@ -279,7 +281,14 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         }
         try noNUL(defaultLocalDirectory, "defaultLocalDirectory")
         try noNUL(defaultRemoteDirectory, "defaultRemoteDirectory")
-        if let credentialReference { try noNUL(credentialReference, "credentialReference") }
+        if let credentialReference {
+            try noNUL(credentialReference, "credentialReference")
+            if credentialReference.hasPrefix(EphemeralPasswordVault.referencePrefix)
+                || credentialReference.hasPrefix("verify-")
+            {
+                throw HostValidationError.ephemeralReference
+            }
+        }
         if let autofillHoldReason { try noNUL(autofillHoldReason, "autofillHoldReason") }
         if let identityAgent {
             do { try IdentityAgentPath.validate(identityAgent) } catch let e as IdentityAgentError {

@@ -110,6 +110,7 @@ struct MainView: View {
             PortForwardFormView(model: model, target: target)
         }
         .modifier(KeysDialogs(model: model, keys: model.keys))
+        .passwordPromptSheet(model: model, presenter: .root)
         .sheet(item: $model.transferSheet) { target in
             switch target {
             case .download(let h): DownloadSheet(model: model, host: h)

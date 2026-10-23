@@ -244,6 +244,14 @@ struct SettingsView: View {
             ) {
                 Toggle("", isOn: bind(\.autofillEnabled)).labelsHidden().toggleStyle(.switch)
             }
+            SettingsRow(
+                "Hỏi mật khẩu khi máy chưa lưu",
+                hint:
+                    "Bật: máy dùng mật khẩu mà chưa lưu sẽ hiện hộp nhập mật khẩu (có thể kiểm tra đăng nhập rồi lưu). Chỉ có tác dụng khi “Tự điền mật khẩu đã lưu” bật."
+            ) {
+                Toggle("", isOn: bind(\.promptMissingPassword)).labelsHidden().toggleStyle(.switch)
+                    .disabled(!s.autofillEnabled)
+            }
             SettingsRow("Tự xoá clipboard mật khẩu Windows sau") {
                 Picker("", selection: bind(\.clipboardClearSeconds)) {
                     ForEach(AppSettings.clipboardChoices, id: \.self) { Text("\($0) giây").tag($0) }

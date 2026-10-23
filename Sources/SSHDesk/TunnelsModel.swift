@@ -38,8 +38,10 @@ final class TunnelsModel {
 
     private func handle(_ event: TunnelEvent) {
         switch event {
-        case .statusChanged(let id, _, let status):
+        case .statusChanged(let id, let hostID, let status):
             statuses[id] = status
+            // Mật khẩu không tích lưu bỏ khi tunnel dừng/lỗi (ADR-029).
+            if !status.isActive { app?.ephemeralVault.release(hostID: hostID, owner: Self.passwordOwner(id)) }
             if status != .connecting { pendingPrompts.removeAll { $0.forwardID == id } }
         case .authPrompt(let id, let hostID, let kind):
             pendingPrompts.append(TunnelPendingPrompt(forwardID: id, hostID: hostID, kind: kind))
@@ -55,9 +57,18 @@ final class TunnelsModel {
                 app.show(error, title: "Không ghi được SSH config")
                 return
             }
-            await manager.start(forward: forward, host: host)
+            // ADR-029: máy chưa lưu mật khẩu -> hỏi trước khi mở tunnel.
+            let owner = Self.passwordOwner(forward.id)
+            guard await app.preparePasswordForSession(host, owner: owner) else { return }
+            // Bản sao có mật khẩu tạm (nếu có) chỉ dùng để kết nối, không lưu.
+            await manager.start(forward: forward, host: app.ephemeralVault.adjusted(host))
+            if !(await manager.status(of: forward.id)).isActive {
+                app.ephemeralVault.release(hostID: host.id, owner: owner)
+            }
         }
     }
+
+    private static func passwordOwner(_ forwardID: UUID) -> String { "tunnel-" + forwardID.uuidString }
 
     func stop(_ forward: PortForward) {
         Task { await manager.stop(forwardID: forward.id) }

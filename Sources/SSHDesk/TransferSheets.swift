@@ -126,6 +126,7 @@ struct DownloadSheet: View {
         }
         .padding(20)
         .frame(width: 560)
+        .passwordPromptSheet(model: model, presenter: .transferSheet)
         .onAppear {
             guard !ready else { return }
             ready = true
@@ -255,6 +256,7 @@ struct UploadSheet: View {
         }
         .padding(20)
         .frame(width: 560)
+        .passwordPromptSheet(model: model, presenter: .transferSheet)
         .onAppear {
             guard !ready else { return }
             ready = true

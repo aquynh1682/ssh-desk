@@ -101,6 +101,10 @@ final class FileBrowserModel {
             return
         }
         guard let dir = socketDirectory else { return }
+        // ADR-029: máy chưa lưu mật khẩu -> hỏi trước khi mở tab; không tích lưu thì mật khẩu chỉ sống tới khi tab đóng.
+        if let app, !(await app.preparePasswordForSession(host, owner: BrowserTab.passwordOwner(hostID: host.id))) {
+            return
+        }
         let tab = BrowserTab(host: host, owner: self, socketDirectory: dir)
         tabs.append(tab)
         selectedTabID = tab.id

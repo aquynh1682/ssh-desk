@@ -34,6 +34,8 @@ public struct AppSettings: Equatable, Sendable {
     public var defaultIdentityAgent = ""
     // MARK: Bảo mật
     public var autofillEnabled = true
+    /// Hỏi mật khẩu khi máy chưa lưu (ADR-029). Chỉ có tác dụng khi `autofillEnabled` bật.
+    public var promptMissingPassword = true
     public var clipboardClearSeconds = AppSettings.defaultClipboardSeconds
     // MARK: Project Analyst
     public var analystRetention = AppSettings.defaultAnalystRetention
@@ -73,6 +75,7 @@ public struct AppSettings: Equatable, Sendable {
         static let userSSHConfigPath = "ssh.user_config_path"
         static let defaultIdentityAgent = "ssh.default_identity_agent"
         static let autofillEnabled = "security.autofill_enabled"
+        static let promptMissingPassword = "security.prompt_missing_password"
         static let clipboardClearSeconds = "security.clipboard_clear_seconds"
         static let analystRetention = "analyst.retention"
         static let analystProbeTimeout = "analyst.probe_timeout"
@@ -109,6 +112,7 @@ public struct AppSettings: Equatable, Sendable {
         if let p = values[Key.userSSHConfigPath], Self.isPlausiblePath(p) { userSSHConfigPath = p }
         if let a = values[Key.defaultIdentityAgent], IdentityAgentPath.isValid(a) { defaultIdentityAgent = a }
         autofillEnabled = bool(Key.autofillEnabled, true)
+        promptMissingPassword = bool(Key.promptMissingPassword, true)
         clipboardClearSeconds = choice(
             Key.clipboardClearSeconds, Self.clipboardChoices, Self.defaultClipboardSeconds)
         analystRetention = Self.clamp(
@@ -136,6 +140,7 @@ public struct AppSettings: Equatable, Sendable {
             Key.userSSHConfigPath: s.userSSHConfigPath,
             Key.defaultIdentityAgent: s.defaultIdentityAgent,
             Key.autofillEnabled: s.autofillEnabled ? "1" : "0",
+            Key.promptMissingPassword: s.promptMissingPassword ? "1" : "0",
             Key.clipboardClearSeconds: String(s.clipboardClearSeconds),
             Key.analystRetention: String(s.analystRetention),
             Key.analystProbeTimeout: String(s.analystProbeTimeout.seconds),
@@ -161,6 +166,7 @@ public struct AppSettings: Equatable, Sendable {
             Key.userSSHConfigPath: userSSHConfigPath,
             Key.defaultIdentityAgent: defaultIdentityAgent,
             Key.autofillEnabled: autofillEnabled ? "1" : "0",
+            Key.promptMissingPassword: promptMissingPassword ? "1" : "0",
             Key.clipboardClearSeconds: String(clipboardClearSeconds),
             Key.analystRetention: String(analystRetention),
             Key.analystProbeTimeout: String(analystProbeTimeout.seconds),

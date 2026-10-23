@@ -98,9 +98,13 @@ final class BrowserTab: Identifiable {
         }
     }
 
+    /// Chủ của mật khẩu tạm (ADR-029) trong `EphemeralPasswordVault`: một tab cho mỗi host.
+    static func passwordOwner(hostID: UUID) -> String { "tab-" + hostID.uuidString }
+
     func close() async {
         eventsTask?.cancel()
         pendingPrompt = nil
+        owner.app?.ephemeralVault.release(hostID: hostID, owner: Self.passwordOwner(hostID: hostID))
         if sessionRan {
             await owner.unregisterSession(session, hostID: hostID)
             await session.close()
@@ -129,8 +133,10 @@ final class BrowserTab: Identifiable {
 
     /// Tự điền password Keychain (một lần/phiên, theo `PasswordAutofillPolicy`) hoặc hiện thẻ prompt.
     private func answer(_ kind: PromptKind, from source: RemoteSession) async {
-        if PasswordAutofillPolicy.shouldAutofill(prompt: kind, host: host, alreadyFilled: autofilled),
-            let ref = host.autofillCredentialReference
+        // Mật khẩu tạm của tab (ADR-029) được gắn vào bản sao dùng để kết nối, không vào hồ sơ.
+        let connectHost = owner.app?.ephemeralVault.adjusted(host) ?? host
+        if PasswordAutofillPolicy.shouldAutofill(prompt: kind, host: connectHost, alreadyFilled: autofilled),
+            let ref = connectHost.autofillCredentialReference
         {
             autofilled = true
             let store = owner.credentials

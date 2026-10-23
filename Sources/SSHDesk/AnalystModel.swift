@@ -206,10 +206,21 @@ final class AnalystModel {
                 self?.progress = nil
                 self?.pendingPrompt = nil
                 self?.coordinator = nil
+                // Mật khẩu không tích lưu chỉ sống tới hết lần chạy (ADR-029).
+                app.ephemeralVault.releaseAll(owner: Self.passwordOwner)
             }
             do {
                 try await app.service?.regenerateSSHConfig()
-                let run = try await coord.run(folder: folder, hosts: hosts, progress: sink)
+                // ADR-029: máy chưa lưu mật khẩu -> hỏi tuần tự; huỷ = bỏ qua máy đó.
+                let (runnable, skipped) = await app.preparePasswords(for: hosts, owner: Self.passwordOwner)
+                if !skipped.isEmpty {
+                    app.showToast(
+                        "Bỏ qua \(skipped.count) máy chưa nhập mật khẩu: "
+                            + skipped.map(\.displayName).joined(separator: ", "))
+                }
+                guard !runnable.isEmpty else { return }
+                try Task.checkCancellation()
+                let run = try await coord.run(folder: folder, hosts: runnable, progress: sink)
                 guard let self else { return }
                 self.latestByFolder[folder] = run
                 if self.folder == folder {
@@ -239,10 +250,13 @@ final class AnalystModel {
         await coordinator?.finish()
     }
 
+    private static let passwordOwner = "analyst"
+
     private func makeProvider(app: AppModel) -> PooledAnalystSessions {
+        let vault = app.ephemeralVault
         let connector = SessionConnector(
             configPath: app.paths.sshConfigURL.path, credentials: app.autofillCredentials,
-            helper: ControllingTTYHelper.defaultURL())
+            helper: ControllingTTYHelper.defaultURL(), hostAdjuster: { vault.adjusted($0) })
         return PooledAnalystSessions(pool: app.sessionPool, connector: connector) {
             [weak self] host, kind, respond in
             Task { @MainActor in

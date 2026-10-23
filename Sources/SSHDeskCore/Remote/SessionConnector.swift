@@ -23,12 +23,16 @@ public struct SessionConnector: Sendable {
     private let helper: URL?
     private let socketDirectory: @Sendable () throws -> SocketDirectory
     private let sshPath: String
+    private let hostAdjuster: (@Sendable (HostProfile) -> HostProfile)?
 
+    /// `hostAdjuster`: đổi bản sao host dùng để kết nối (vd gắn mật khẩu tạm trong bộ nhớ, ADR-029).
     public init(
         configPath: String, credentials: any CredentialStore, helper: URL?,
         sshPath: String = "/usr/bin/ssh",
-        socketDirectory: @escaping @Sendable () throws -> SocketDirectory = { try SocketDirectory.ensure() }
+        socketDirectory: @escaping @Sendable () throws -> SocketDirectory = { try SocketDirectory.ensure() },
+        hostAdjuster: (@Sendable (HostProfile) -> HostProfile)? = nil
     ) {
+        self.hostAdjuster = hostAdjuster
         self.configPath = configPath
         self.credentials = credentials
         self.helper = helper
@@ -37,9 +41,10 @@ public struct SessionConnector: Sendable {
     }
 
     /// Trả phiên đã `connected`. Huỷ task → đóng phiên và ném `CancellationError`.
-    public func connect(host: HostProfile, onPrompt: @escaping PromptHandler) async throws
+    public func connect(host original: HostProfile, onPrompt: @escaping PromptHandler) async throws
         -> RemoteSession
     {
+        let host = hostAdjuster?(original) ?? original
         guard let alias = host.sshAlias else { throw SessionConnectError.noAlias }
         let dir: SocketDirectory
         do { dir = try socketDirectory() } catch {
