@@ -137,6 +137,13 @@ struct HostDetailView: View {
                     Text("Bộ đăng nhập: \(set.name) (chưa có mật khẩu)")
                         .font(.system(size: 13)).foregroundStyle(Theme.textSecondary)
                 }
+                if model.needsReauth(host) {
+                    Label(
+                        "Mật khẩu đã lưu không còn dùng được trên máy này — nhập lại",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.system(size: 12.5)).foregroundStyle(Theme.amber)
+                }
                 if let missingKey {
                     Label("Không thấy file key \(missingKey)", systemImage: "exclamationmark.triangle.fill")
                         .font(.system(size: 12.5)).foregroundStyle(Theme.amber)

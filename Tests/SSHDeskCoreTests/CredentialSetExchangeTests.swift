@@ -99,16 +99,17 @@ private func swiftFiles(under root: URL) -> [URL] {
     #expect(offenders.isEmpty, "\(offenders)")
     let helper = try String(
         contentsOf: sourcesRoot().appendingPathComponent("sshdesk-askpass/main.swift"), encoding: .utf8)
-    #expect(helper.contains("import CredentialBackend") && helper.contains("KeychainBackend("))
+    #expect(helper.contains("import CredentialBackend") && helper.contains("SecureEnclaveBackend("))
 }
 
 /// Chỉ file được liệt kê mới được đọc `credentialReference` thô; chỗ khác phải qua
 /// `effectiveCredentialReference` / `autofillCredentialReference` / `CredentialResolution`.
 @Test func rawCredentialReferenceReadsOnlyInAllowedFiles() throws {
+    // CredentialSetViews/AppModel: UI chỉ kiểm có mật khẩu riêng để hiển thị.
     let allowed: Set<String> = [
         "HostProfile.swift", "HostRepository.swift", "CredentialResolution.swift", "ConnectionService.swift",
         "HostDraft.swift", "HostExchange.swift", "AskpassDecision.swift", "CLIHostList.swift",
-        "AppModel.swift", "CredentialSetViews.swift",  // UI chỉ kiểm có mật khẩu riêng để hiển thị
+        "AppModel.swift", "CredentialMigration.swift", "CredentialSetViews.swift",
     ]
     var offenders: [String] = []
     for f in swiftFiles(under: sourcesRoot()) where !allowed.contains(f.lastPathComponent) {

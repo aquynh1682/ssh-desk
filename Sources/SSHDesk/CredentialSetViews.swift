@@ -70,6 +70,10 @@ struct CredentialSetsSection: View {
                 Text(set.name).font(.system(size: 13, weight: .semibold))
                 Text("\(set.kindLabel(hasPassword: hasPw)) · \(count) máy")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
+                if model.setNeedsReauth(set.id) {
+                    Text("Mật khẩu đã lưu không còn dùng được trên máy này — nhập lại")
+                        .font(.caption).foregroundStyle(Theme.amber)
+                }
                 if let file = set.identityFile,
                     !FileManager.default.fileExists(
                         atPath: CredentialResolution.expandTilde(file, home: NSHomeDirectory()))

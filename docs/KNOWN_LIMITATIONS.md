@@ -94,6 +94,16 @@ Gom từ mục "Rủi ro chấp nhận" và "Chưa kiểm chứng" trong [archit
 - CLI v1 không hỗ trợ máy Windows (exit 3) và không có lệnh nào ngoài `list`/`open`/`help`.
 **ADR:** 025.
 
+### A17. Kho secret Secure Enclave (ADR-004c, 030)
+- **Đổi máy / cài lại macOS mất mật khẩu:** khoá Secure Enclave gắn với máy (`ThisDeviceOnly`), không backup, không xuất. Khôi phục sang máy khác hoặc cài lại macOS thì mọi password/passphrase đã lưu không giải mã được; phải nhập lại (app báo "Mật khẩu đã lưu không còn dùng được trên máy này"). **Tránh:** giữ password trong trình quản lý mật khẩu của bạn.
+- **Process tin cậy vẫn đọc được:** Secure Enclave chống trích xuất khoá, không chống process cùng user mà Keychain cho phép (app + helper) gọi giải mã trên chính máy này. Mức bảo vệ chính vẫn là ACL Keychain như A1.
+- **Không Touch ID:** không dùng được `.userPresence` với cách lưu hiện tại (đã kiểm chứng lỗi -34018).
+- **Máy không có Secure Enclave:** không lưu được mật khẩu (không lưu plaintext); Intel không T2 không phải mục tiêu.
+- **Passphrase của bộ không tự điền ngoài Warp:** Truyền file, Tunnel, Analyst, Monitor, Cài key luôn hỏi. Lý do bảo mật: server có thể in prompt giả `Enter passphrase for key`, passphrase sẽ bị gửi lên server qua PTY.
+- **Trạng thái "đã có mật khẩu" trong form** có thể vẫn đúng khi mục đã không còn giải mã được; chỉ khi dùng mới biết.
+- **Gán bộ chỉ theo thư mục:** bảng máy chủ chưa chọn nhiều dòng; gán cho vài host riêng lẻ thì dùng form từng host.
+- **ADR:** 004b, 004c, 030.
+
 ## B. Chưa kiểm chứng (với hệ thống thật)
 
 ### B1. Truyền file với server thật
@@ -125,3 +135,6 @@ Chưa xong lúc viết tài liệu; mục tương ứng sẽ cập nhật khi ho
 
 ### B10. CLI `sshdesk` và URL scheme (ADR-025)
 Chưa thử trên máy thật: (1) scheme `sshdesk://` có đăng ký với LaunchServices sau `make install` (có thể phải mở app một lần); (2) Apple Event khi app tắt hoặc đang chạy; SwiftUI `WindowGroup` có thể mở thêm cửa sổ; (3) `sshdesk open` end-to-end; (4) nhánh dự phòng mở DB `mode=ro` / `immutable=1` có thật sự cần không (`immutable` chỉ dùng khi không có `-wal`). Script Alfred/Raycast trong README chưa chạy thử. **Tránh/làm:** kịch bản K3 trong [TESTING.md](TESTING.md). **ADR:** 025.
+
+### B11. Bộ đăng nhập và kho Secure Enclave (ADR-030, 004c)
+Chỉ có test đơn vị (khoá phần mềm; test SE thật có điều kiện) và sshd tạm; chưa thử trên `.app` đã cài: (1) migration chuyển password cũ không mất; (2) askpass dưới Warp không hiện hộp thoại Keychain khi ký bằng chứng chỉ; (3) hành vi khi mất khoá `local.sshdesk.sekey`; (4) passphrase của bộ qua Warp với server thật; (5) luồng hold/"Xác nhận" sau khi nhập file. **Tránh/làm:** kịch bản K4s/K4e trong [TESTING.md](TESTING.md). **ADR:** 004c, 030.

@@ -73,7 +73,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [~] K2 (code xong, QA đạt, PM duyệt; chờ thử với agent thật) IdentityAgent theo host + mặc định Cài đặt, validate chống chèn directive, migration v8 — ADR-024
 - [~] K3 (code xong, QA đạt sau sửa, PM duyệt; chờ thử URL scheme + `sshdesk open` sau make install) CLI `sshdesk` (list/open/help) + URL scheme `sshdesk://` có xác nhận — ADR-025
 - [~] K4s (code xong, QA chặn→sửa, PM duyệt; chờ thử UI bộ đăng nhập) Bộ đăng nhập dùng chung (credential set) + cột hold tự điền, migration v9 — ADR-030
-- [ ] K4e (coder) Backend Secure Enclave + ECIES cho mọi secret + migration item plaintext cũ — ADR-004c (ngay sau K4s)
+- [~] K4e (code xong, QA chặn→sửa, PM duyệt; chờ người dùng thử migration + askpass sau make install) Backend Secure Enclave + ECIES cho mọi secret + migration item plaintext cũ — ADR-004c (ngay sau K4s)
 - [x] K4r (researcher) Kiểm chứng đọc/tạo `.xlsx` bằng `unzip -p`/`zip` + XMLParser — ADR-026
 - [ ] K4a (coder) Khung nguồn đồng bộ + Excel mẫu + XLSX/CSV ghép cột, migration v10 — ADR-026
 - [ ] K4c (coder) Hỏi mật khẩu lần đầu + "Lưu vào Keychain" có kiểm tra (Warp/Analyst/Monitor/Truyền file/Windows) — ADR-029

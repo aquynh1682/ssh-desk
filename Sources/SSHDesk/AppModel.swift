@@ -129,6 +129,7 @@ final class AppModel {
     private(set) var browser: FileBrowserModel?
     /// Keychain thật; ACL tin cậy cả helper `sshdesk-askpass` (nếu tìm thấy trong bundle).
     let credentials: any CredentialStore
+    private let sealedStore: SecureEnclaveCredentialStore
     /// Kho bí mật dành cho MỌI chỗ tự điền (PTY, tunnel, phiên SFTP, cài key): trả nil khi cài đặt tắt tự điền.
     let autofillCredentials: any CredentialStore
     /// Bản cài đặt dùng chung với các service Core (ADR-021).
@@ -162,9 +163,10 @@ final class AppModel {
 
     init(paths: AppPaths = .default) {
         self.paths = paths
-        let store = KeychainCredentialStore(
+        let store = SecureEnclaveCredentialStore(
             trustedApplicationPaths: AskpassHelper.defaultURL().map { [$0.path] } ?? [])
         credentials = store
+        sealedStore = store
         let settingsStore = self.settingsStore
         autofillCredentials = AutofillGatedCredentialStore(base: store) {
             settingsStore.current.autofillEnabled
@@ -185,6 +187,9 @@ final class AppModel {
             let loaded = settingsRepo.load()
             settingsStore.update(loaded)
             settings = loaded
+            // Migration một lần Keychain plaintext -> Secure Enclave (ADR-004c), xong trước khi hiện danh sách.
+            await CredentialMigration.runIfNeeded(
+                store: sealedStore, repository: repo, settings: settingsRepo)
             let service = ConnectionService(
                 repository: repo, appConfigURL: paths.sshConfigURL,
                 userConfigPath: nil, launcher: WarpLauncher(),
@@ -416,6 +421,18 @@ final class AppModel {
     func hasStoredPassword(_ host: HostProfile) -> Bool {
         guard let ref = host.effectiveCredentialReference else { return false }
         return credentials.exists(ref: ref)
+    }
+
+    /// Mật khẩu hiệu lực đã lưu nhưng không giải mã được (khoá SE mất/đổi máy) → cần nhập lại (ADR-004c).
+    func needsReauth(_ host: HostProfile) -> Bool {
+        guard let ref = host.effectiveCredentialReference else { return false }
+        return credentials.status(ref: ref) == .undecryptable
+    }
+
+    /// Bộ đăng nhập có password/passphrase không giải mã được.
+    func setNeedsReauth(_ id: UUID) -> Bool {
+        [CredentialSet.passwordReference(for: id), CredentialSet.passphraseReference(for: id)]
+            .contains { credentials.status(ref: $0) == .undecryptable }
     }
 
     /// Host có mật khẩu RIÊNG trong Keychain (form dùng để xoá/giữ mật khẩu riêng).

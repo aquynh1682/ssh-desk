@@ -66,3 +66,18 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 5. `sshdesk list`, `sshdesk list --folder <tên>`, `sshdesk list --json` (kiểm tra JSON hợp lệ, không có credentialReference/ghi chú); `sshdesk bogus` -> exit 2; `echo $?` sau mỗi lệnh.
 6. Thư mục `~/Library/Application Support/SSHDesk/requests/` không còn file sau khi mở. Chạy `sshdesk list` khi app đang ghi DB: không lỗi khoá lâu.
 7. Alfred/Raycast: thử script trong README nếu dùng.
+
+**K4s — Bộ đăng nhập (ADR-030).** Dùng `make install`, server test.
+1. Cài đặt → Bảo mật: tạo bộ (user, password, tuỳ chọn key + passphrase). Gán cho một host qua form; mở Warp: đăng nhập tự động.
+2. Gán bộ cho cả thư mục bằng "Gán bộ đăng nhập…" (menu thư mục): xem trước số host, host có mật khẩu riêng vẫn dùng mật khẩu riêng.
+3. Sửa password của bộ: mọi host dùng bộ nhận password mới (mở Warp lại). Xoá bộ: host mất liên kết nhưng còn; không lỗi.
+4. Host có mật khẩu riêng + bộ: chi tiết máy ghi "Mật khẩu riêng (ưu tiên hơn bộ ...)"; mở Warp dùng mật khẩu riêng; bấm "Xoá mật khẩu riêng" thì chuyển sang password của bộ.
+5. Passphrase: bộ có key mã hoá passphrase, mở bằng Warp -> tự điền một lần. Mở cùng host qua Truyền file/Tunnel/Analyst/Monitor -> phải hỏi bằng thẻ prompt, không tự điền.
+6. Nhập JSON có trường bộ đăng nhập: xem trước báo tên bộ chưa có sẽ tạo bộ rỗng; sau nhập host bị tạm tắt tự điền, mở Warp báo cần xác nhận; mở chi tiết máy bấm "Xác nhận" -> tự điền lại. File xuất không chứa password/passphrase/đường dẫn key của bộ.
+
+**K4e — Kho Secure Enclave + migration (ADR-004b/004c).** Cần bản có password đã lưu từ trước, rồi `make install` (ký chứng chỉ, ADR-023). Ghi lại kết quả.
+1. Mở app lần đầu, vào Keychain Access (login), tìm `local.sshdesk`: hết item `local.sshdesk.credentials`; có `local.sshdesk.sekey` và `local.sshdesk.sealed` (mỗi tham chiếu một item). Mật khẩu cũ vẫn tự điền khi mở Warp, không phải nhập lại.
+2. Lưu mật khẩu mới cho host và bộ: thêm item `sealed`; mở Warp vẫn đăng nhập tự động.
+3. Thoát app, xoá item `local.sshdesk.sekey`, mở lại: host có mật khẩu lưu hiện "Mật khẩu đã lưu không còn dùng được trên máy này", không tự điền, không crash; nhập lại thì dùng được.
+4. Askpass dưới Warp (ký bằng chứng chỉ, ADR-023): không hiện hộp thoại Keychain; build + cài lại cũng không hỏi lại.
+5. "Xoá mọi mật khẩu đã lưu" (có xác nhận): item `sealed` bị xoá, khoá `sekey` còn lại.

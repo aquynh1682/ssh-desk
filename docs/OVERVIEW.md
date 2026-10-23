@@ -11,7 +11,8 @@ Swift 6, SwiftUI (+ AppKit khi cần), SwiftPM, SQLite hệ thống (`import SQL
 | `SSHDeskCore` | Toàn bộ logic, không import SwiftUI, có test. |
 | `SSHDesk` | UI SwiftUI, mỏng, chỉ gọi vào Core. |
 | `AskpassKit` | Logic phân loại prompt dùng chung cho helper askpass (có bảng test). |
-| `sshdesk-askpass` | Executable helper trong bundle: đọc Keychain theo tham chiếu, in password cho `ssh`. |
+| `CredentialBackend` | Backend secret dùng chung cho `SSHDeskCore` và `sshdesk-askpass` (ADR-004b/004c). Mọi `SecItem*`/`kSecClass` chỉ nằm ở đây: Secure Enclave + ECIES, `status(ref:)` trả missing/present/undecryptable. |
+| `sshdesk-askpass` | Executable helper trong bundle: đọc secret qua `CredentialBackend` theo tham chiếu, in password/passphrase cho `ssh`. |
 | `sshdesk-cli` | CLI `sshdesk` (list/open/help), chỉ đọc DB, nhờ app mở host qua `sshdesk://`. |
 | `sshdesk-ctty` | Executable helper gán controlling tty rồi `execv` (posix_spawn trên macOS không tự cấp). |
 
@@ -20,7 +21,7 @@ Thư mục trong `SSHDeskCore/`:
 - `SSHConfig/` — `SSHConfigWriter` (sinh config riêng). `SSHImport/` — đọc alias từ `~/.ssh/config`.
 - `Warp/` — `WarpTabConfigRenderer`, `WarpLauncher`, `ZshQuoting`.
 - `Process/` — `PTYProcess`, `PromptDetector`, `ScpProgressParser`, `OutputSanitizer`.
-- `Credentials/` — `CredentialStore` (Keychain), `PasswordAutofillPolicy`.
+- `Credentials/` — protocol `CredentialStore`, `AutofillGatedCredentialStore` (chặn khi hold/tắt tự điền), `CredentialResolution`, `PasswordAutofillPolicy`.
 - `Transfer/` — `TransferManager`, `ScpCommandBuilder`, `TransferRepository`, state machine job.
 - `Remote/` — `RemoteSession` (master), `SessionPool`, `SessionConnector`, `RemoteFileService`, `SftpBatch`, `SftpListingParser`, `LocalFileService`.
 - `Browser/` — logic thuần của màn Truyền file (tab, đường dẫn, kế hoạch truyền).
@@ -34,6 +35,12 @@ Thư mục trong `SSHDeskCore/`:
 **IdentityAgent (ADR-024).** `HostProfile.identityAgent` (nil = theo mặc định `ssh.default_identity_agent` trong Cài đặt; rỗng = hệ thống, không ghi directive). `SSHConfigWriter` ghi `IdentityAgent "<giá trị hiệu lực>"` (host ?? mặc định) trong Host block; chữ `SSH_AUTH_SOCK` ghi nguyên văn. Validator (`SSHConfig/IdentityAgent.swift`): phải bắt đầu `/`, `~/` hoặc đúng `SSH_AUTH_SOCK`, cấm ký tự điều khiển, `%`, `$`, tối đa 1024 byte. Host imported và Windows không áp dụng. `Keys/AgentKeyLister` chạy `ssh-add -L` với `SSH_AUTH_SOCK` trong env process con để liệt kê public key (không đọc private key).
 
 **Ký app (ADR-023).** `build-app.sh` đọc `SSHDESK_SIGN_IDENTITY` (Makefile: `SIGN_IDENTITY`). Có identity: ký helper trước rồi app bằng `codesign --force --sign` với identifier cố định (`local.sshdesk.app`, `.ctty`, `.askpass`, `.cli`), không `--deep`, in `codesign -d -r-`. Không có hoặc không tìm thấy: ký ad-hoc kèm cảnh báo. Designated requirement ổn định giúp ACL Keychain không đổi giữa các lần build.
+
+**Kho secret: Secure Enclave + ECIES (ADR-004b/004c).** Mọi đọc/ghi/xoá secret đi qua `CredentialStore` -> `CredentialBackend`. Một khoá P-256 trong Secure Enclave (handle ở Keychain `local.sshdesk.sekey`, account `default`, không cần Touch ID/entitlement). Seal: ECDH(khoá tạm, khoá SE) -> HKDF-SHA256 (salt = public key tạm, info `sshdesk-credential-v1`) -> AES-GCM, AAD = `sshdesk-v1|<tham chiếu>` (chống tráo ciphertext giữa các item); định dạng `0x01 ‖ ephPub(65) ‖ nonce+ct+tag`. Ciphertext ở Keychain `local.sshdesk.sealed`, account = tham chiếu. Open: làm ngược lại; version lạ/tag sai/khoá mất -> `undecryptable` (không tự điền, UI báo nhập lại, không bao giờ đọc lại plaintext). Logic seal/open thuần, tách qua protocol `SealingKey` (SE thật, và P-256 phần mềm chỉ cho test). Tham chiếu: `<uuid>` (password riêng của host), `set-<uuid>` (password bộ), `setkey-<uuid>` (passphrase bộ), `metrics-<uuid>` (token metrics, dự kiến ADR-028). **Migration một lần khi app khởi động** (chỉ app, không helper): item plaintext cũ `local.sshdesk.credentials` -> seal -> đọc lại so khớp -> xoá item cũ; lỗi thì giữ item cũ và thử lại lần sau; cờ trong `settings` ghi đã xong.
+
+**Bộ đăng nhập (ADR-030).** `CredentialResolution.resolve(host:set:settings:)` (thuần, có test) là nơi duy nhất quyết định user, identityFile, identityAgent, passwordRef, passphraseRef: **giá trị riêng của host > bộ > mặc định Cài đặt** (Cài đặt chỉ áp cho IdentityAgent). `SSHConfigWriter`, ConnectionService, PTY/askpass, Truyền file, Tunnel... đều lấy từ đây. Passphrase của bộ chỉ tự điền qua askpass (Warp), khi prompt bắt đầu đúng `Enter passphrase for key '` và path khớp identityFile của bộ; PTY không tự điền passphrase. Xoá bộ thì gỡ khỏi host (không xoá host).
+
+**Hold tự điền (ADR-030/026).** Cột `autofill_hold` + `autofill_hold_reason` (chỉ chứa tên bộ hoặc giá trị địa chỉ cũ -> mới, không secret). Gán bộ từ nhập file đặt hold; `HostProfile.autofillCredentialReference` trả nil khi hold; `AutofillGatedCredentialStore` chặn ở nơi gọi. Người dùng bấm "Xác nhận" ở chi tiết máy để gỡ.
 
 **Warp Tab Config (ADR-007).** Ghi `~/.warp/tab_configs/sshdesk_<uuid>.toml` (một pane, `commands` = lệnh ssh đã quote cho zsh), mở bằng `warp://tab_config/sshdesk_<uuid>`. App chỉ biết "đã yêu cầu mở"; lỗi thì Copy lệnh.
 
@@ -66,6 +73,7 @@ Thư mục trong `SSHDeskCore/`:
 | v6 | `port_forwards` | 011 |
 | v7 | `settings(key, value)` — đang hoàn thiện | 021 |
 | v8 | `hosts.identity_agent` | 024 |
+| v9 | `credential_sets`; `hosts.credential_set_id`, `autofill_hold`, `autofill_hold_reason` (cột nguồn đồng bộ ADR-026 thêm sau) | 030 |
 
 ## Danh sách ADR
 Chi tiết trong [architecture.md](architecture.md).
@@ -76,6 +84,8 @@ Chi tiết trong [architecture.md](architecture.md).
 | 002 | Tách Core / UI | Logic ở `SSHDeskCore`, UI chỉ gọi vào. |
 | 003 | Swift Testing | Không XCTest; cần `-plugin-path`. |
 | 004 | Secret chỉ trong Keychain | DB chỉ giữ tham chiếu. |
+| 004b | Một kho secret | Mọi đọc/ghi qua `CredentialStore`/`CredentialBackend`, helper askpass dùng chung backend. |
+| 004c | Secure Enclave + ECIES | Khoá SE gắn máy, không Touch ID, ciphertext ở Keychain, migration item cũ, `undecryptable`. |
 | 005 | SQLite hệ thống | Không dependency; migration tuần tự. |
 | 006 | SSH config riêng + Include | `-F` tuyệt đối, `Match all`, validate chống chèn directive. |
 | 007 | Warp qua Tab Config | File `sshdesk_*.toml` + URI `warp://tab_config/`. |
@@ -97,3 +107,4 @@ Chi tiết trong [architecture.md](architecture.md).
 | 023 | Ký app bằng chứng chỉ ổn định | `SSHDESK_SIGN_IDENTITY`, identifier cố định, fallback ad-hoc. |
 | 024 | Agent ngoài qua `IdentityAgent` | Cột `identity_agent`, preset 1Password/Bitwarden/Secretive, validator, liệt kê key agent. |
 | 025 | CLI `sshdesk` + URL scheme | DB chỉ đọc, file request 0600 hết hạn 30 giây, URL ngoài luôn xác nhận. |
+| 030 | Bộ đăng nhập dùng chung | `credential_sets`, `CredentialResolution` (host > bộ > Cài đặt), passphrase chỉ qua askpass, hold khi gán từ file. |

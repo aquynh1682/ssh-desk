@@ -5,6 +5,8 @@ import Foundation
 public enum CredentialStoreError: Error, Equatable, CustomStringConvertible {
     case keychain(status: Int32)
     case invalidReference
+    /// Backend Secure Enclave (ADR-004c); `message` không chứa secret.
+    case secureEnclave(String)
 
     public var description: String {
         switch self {
@@ -12,6 +14,7 @@ public enum CredentialStoreError: Error, Equatable, CustomStringConvertible {
             let message = KeychainBackendError.message(for: status)
             return "Keychain: \(message) (\(status))"
         case .invalidReference: return "Tham chiếu Keychain không hợp lệ."
+        case .secureEnclave(let message): return message
         }
     }
 }
@@ -68,6 +71,45 @@ public struct KeychainCredentialStore: CredentialStore, CustomStringConvertible 
         switch error as? KeychainBackendError {
         case .status(let s)?: return .keychain(status: s)
         case .invalidAccount?: return .invalidReference
+        case nil: return .keychain(status: -1)
+        }
+    }
+}
+
+/// Kho thật của app (ADR-004c): ECIES với khoá Secure Enclave. Chỉ chuyển tiếp sang `SecureEnclaveBackend`
+/// (dùng chung với helper `sshdesk-askpass`) và đổi kiểu lỗi. Không bao giờ đọc/ghi plaintext.
+public struct SecureEnclaveCredentialStore: CredentialStore, CustomStringConvertible {
+    public let backend: SecureEnclaveBackend
+
+    public init(trustedApplicationPaths: [String] = []) {
+        backend = SecureEnclaveBackend(trustedApplicationPaths: trustedApplicationPaths)
+    }
+
+    public init(backend: SecureEnclaveBackend) { self.backend = backend }
+
+    public var description: String { "SecureEnclaveCredentialStore" }
+
+    public func save(ref: String, password: String) throws {
+        do { try backend.save(account: ref, secret: password) } catch { throw Self.map(error) }
+    }
+    public func read(ref: String) -> String? { backend.read(account: ref) }
+    public func delete(ref: String) throws {
+        do { try backend.delete(account: ref) } catch { throw Self.map(error) }
+    }
+    public func exists(ref: String) -> Bool { backend.exists(account: ref) }
+    public func status(ref: String) -> CredentialStatus {
+        switch backend.status(account: ref) {
+        case .missing: return .missing
+        case .present: return .present
+        case .undecryptable: return .undecryptable
+        }
+    }
+
+    private static func map(_ error: Error) -> CredentialStoreError {
+        switch error as? SecureEnclaveBackendError {
+        case .invalidAccount?: return .invalidReference
+        case .keychain(let s)?: return .keychain(status: s)
+        case let e?: return .secureEnclave(e.message)
         case nil: return .keychain(status: -1)
         }
     }

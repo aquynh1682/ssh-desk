@@ -16,6 +16,20 @@ public final class SettingsRepository: @unchecked Sendable {
         return AppSettings(values: values)
     }
 
+    /// Cờ nội bộ (vd migration một lần). Khoá không thuộc `AppSettings`, nên không bị `save` ghi đè.
+    public func flag(_ key: String) -> Bool {
+        guard let rows = try? db.query("SELECT value FROM settings WHERE key = ?", [.text(key)]),
+            let first = rows.first, case .text(let v) = first[0]
+        else { return false }
+        return v == "1"
+    }
+
+    public func setFlag(_ key: String) throws {
+        try db.execute(
+            "INSERT INTO settings(key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'",
+            [.text(key)])
+    }
+
     /// Ghi (đã chuẩn hoá) trong một transaction; trả cài đặt đã chuẩn hoá.
     @discardableResult
     public func save(_ settings: AppSettings) throws -> AppSettings {
@@ -66,4 +80,5 @@ public struct AutofillGatedCredentialStore: CredentialStore {
     public func read(ref: String) -> String? { isEnabled() ? base.read(ref: ref) : nil }
     public func delete(ref: String) throws { try base.delete(ref: ref) }
     public func exists(ref: String) -> Bool { base.exists(ref: ref) }
+    public func status(ref: String) -> CredentialStatus { base.status(ref: ref) }
 }

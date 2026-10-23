@@ -87,7 +87,7 @@ func claimSecretUse(kind: String) -> Bool {
 
 /// Đọc qua backend Keychain dùng chung với app (ADR-004b): helper không tự viết truy vấn Keychain.
 func readKeychainSecret(ref: String) -> String? {
-    KeychainBackend(service: CredentialConstants.service).read(account: ref)
+    SecureEnclaveBackend().read(account: ref)
 }
 
 // MARK: - tty

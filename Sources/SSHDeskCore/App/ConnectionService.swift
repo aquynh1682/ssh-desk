@@ -244,10 +244,12 @@ public actor ConnectionService {
         // Item của mọi bộ đăng nhập (account tất định). Giữ bộ và việc gán: bộ chỉ trở thành "chưa có mật khẩu".
         if let credentials {
             for set in try await repository.credentialSets() {
-                for ref in [set.passwordReference, set.passphraseReference] where credentials.exists(ref: ref) {
+                for ref in [set.passwordReference, set.passphraseReference] {
+                    // Xoá cả ciphertext lẫn item plaintext cũ còn sót (ADR-004c); chỉ đếm khi có mật khẩu.
+                    let had = credentials.exists(ref: ref)
                     do {
                         try credentials.delete(ref: ref)
-                        result.setItemsRemoved += 1
+                        if had { result.setItemsRemoved += 1 }
                     } catch {
                         result.setItemsFailed += 1
                     }

@@ -24,6 +24,6 @@ let package = Package(
         .executableTarget(name: "sshdesk-cli", dependencies: ["SSHDeskCore"]),
         .testTarget(
             name: "SSHDeskCoreTests",
-            dependencies: ["SSHDeskCore", "AskpassKit", "sshdesk-ctty", "sshdesk-askpass"]),
+            dependencies: ["SSHDeskCore", "AskpassKit", "CredentialBackend", "sshdesk-ctty", "sshdesk-askpass"]),
     ]
 )

@@ -31,6 +31,8 @@ Các lệnh khác: `make check` (lint + build + test), `make run`, `make app`. X
 - **Máy chủ + thư mục:** thêm/sửa/xoá/nhân bản, tìm kiếm, môi trường (DEV/UAT/STG/PROD/OTHER), yêu thích, bastion (ProxyJump), import alias có sẵn từ `~/.ssh/config` (chỉ đọc). Thư mục ở sidebar, kéo host vào thư mục.
 - **Mở Warp:** sinh Tab Config và mở tab Warp chạy `ssh`; không có Warp thì Copy lệnh SSH. Click 1 lần = chọn, double-click / Return = mở.
 - **Tự đăng nhập bằng password:** tuỳ chọn lưu password trong Keychain cho từng host; Warp đăng nhập qua helper `SSH_ASKPASS` (env chỉ chứa tham chiếu, không chứa password).
+- **Bộ đăng nhập (Cài đặt → Bảo mật):** tạo bộ dùng chung gồm user, password, file key, passphrase của key, agent (mỗi phần tuỳ chọn). Gán cho host ở form host (picker "Bộ đăng nhập") hoặc cho cả thư mục bằng "Gán bộ đăng nhập…" ở menu thư mục (bảng máy chủ chưa chọn nhiều dòng). Giá trị riêng của host luôn ưu tiên hơn bộ (host > bộ > Cài đặt). Sửa password/key của bộ thì mọi host dùng bộ nhận giá trị mới. Passphrase của bộ chỉ tự điền khi mở bằng Warp (askpass); Truyền file, Tunnel, Analyst, Monitor... luôn hỏi bạn. Xuất/nhập JSON chỉ mang **tên** bộ, không password, passphrase hay đường dẫn key của bộ. Chưa thử tay (xem [TESTING](docs/TESTING.md)).
+- **Xác nhận địa chỉ / tạm tắt tự điền:** khi bộ đăng nhập được gán từ file nhập (hoặc sau này khi nguồn đồng bộ đổi địa chỉ máy), app tạm tắt tự điền mật khẩu cho host đó để password không bị đưa sang máy lạ. Mở chi tiết máy, xem lý do rồi bấm "Xác nhận" để bật lại. Trong lúc tạm tắt, mở Warp vẫn được nhưng bạn tự nhập mật khẩu. Gán bằng tay trong app không bị tạm tắt.
 - **Agent ngoài (1Password, Bitwarden, Secretive):** chọn agent ở form host (mục Nâng cao) hoặc đặt mặc định trong Cài đặt → SSH config. App chỉ ghi `IdentityAgent "<socket>"` vào config của app, không đọc private key. Với agent ngoài nên để IdentityFile trống, hoặc trỏ tới file `.pub` của key nằm trong agent. Màn SSH Keys có thẻ "Key trong agent" (liệt kê public key bằng `ssh-add -L`). Chỉ áp dụng cho host managed loại SSH. Chưa thử với agent thật.
 - **Truyền file kiểu Xftp:** hai khung (Mac | server), tab cho từng server, kéo thả, hàng đợi (huỷ, thử lại, ghi đè/đổi tên/bỏ qua), tạo thư mục / đổi tên / xoá trên server. Dùng `scp` (giao thức SFTP) và `sftp` qua một kết nối ControlMaster mỗi tab.
 - **SSH Keys:** liệt kê key trong `~/.ssh` (chỉ đọc `*.pub`), tạo key mới, "Cài key lên server" (`ssh-copy-id`).
@@ -54,6 +56,7 @@ Tất cả logic có test tự động. Nhưng nhiều tính năng mới chỉ c
 | UI máy chủ/thư mục (B3), double-click (E0) | Một phần (SSH qua Warp chạy được) | Kịch bản thử tay còn lại |
 | Truyền file, auth prompt (C3/C4, F2) | Chỉ sshd tạm | Server thật: password, MFA, host key |
 | Password Keychain + askpass (E2) | Chỉ test đơn vị | Server có password; ACL Keychain khi chạy từ `.app` |
+| Bộ đăng nhập (K4s), kho Secure Enclave + migration (K4e) | Chỉ test đơn vị | Thử tay trên `.app` đã cài (TESTING mục K4s/K4e) |
 | SSH Keys (E1), Port forward (E3) | Chỉ sshd tạm | Server thật |
 | Monitor (I1/I2) | Chưa | Server Linux thật, giao diện |
 | Xuất/nhập (D1) | Chỉ test | Thử tay |
@@ -110,9 +113,15 @@ Với `jq`: `~/bin/sshdesk list --json | jq --arg q "$1" '{items: [.[] | select(
 | File `.rdp` | `~/Library/Application Support/SSHDesk/rdp/<uuid>/` |
 | Tab Config của Warp | `~/.warp/tab_configs/sshdesk_<uuid>.toml` |
 | Socket ControlMaster | `/tmp/sshdesk-<uid>/` (0700) |
-| Password | Chỉ Keychain (service `local.sshdesk.credentials`) |
+| Password, passphrase | Chỉ Keychain, dạng mã hoá (xem “Mật khẩu lưu ở đâu”): khoá `local.sshdesk.sekey`, ciphertext `local.sshdesk.sealed` |
 
 App **không** sửa `~/.ssh/config` hay Tab Config của bạn; chỉ ghi file mang tiền tố `sshdesk_` / thư mục riêng của app, và `Include` config của bạn từ config của app.
+
+## Mật khẩu lưu ở đâu
+- Password và passphrase (host, bộ đăng nhập, token) được **mã hoá bằng khoá Secure Enclave của chính máy này** rồi lưu ciphertext trong Keychain (item `local.sshdesk.sealed`; handle khoá ở item `local.sshdesk.sekey`). Không cần Touch ID. DB không giữ password, chỉ giữ tham chiếu.
+- Lần đầu mở bản mới, app tự chuyển mật khẩu cũ (item `local.sshdesk.credentials`) sang dạng mã hoá, kiểm tra đọc lại khớp rồi mới xoá item cũ. Chưa thử trên máy thật.
+- **Đổi máy, cài lại macOS hoặc khôi phục backup sang máy khác thì mất mật khẩu đã lưu** (khoá gắn với máy, không có backup/xuất): phải nhập lại. Mục không giải mã được hiện "Mật khẩu đã lưu không còn dùng được trên máy này"; nhập lại sẽ ghi đè.
+- Máy không có Secure Enclave thì không lưu được mật khẩu (không bao giờ lưu plaintext). Giới hạn: [KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md) mục A17.
 
 ## Bảo mật (tóm tắt)
 - Password/passphrase/OTP không vào file, SQLite, log, argv, env, URI, export. Chỉ Keychain. Ngoại lệ có chủ đích: copy mật khẩu máy Windows lên clipboard (đánh dấu concealed/transient, tự xoá).
