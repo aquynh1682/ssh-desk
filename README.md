@@ -62,7 +62,11 @@ Trong hub "Nguồn máy chủ…", menu "Thêm nguồn" có Excel/CSV, JSON, Ans
   - Thiếu `ansible_user`: máy **mới** dùng tên đăng nhập macOS (có cảnh báo); máy đã có giữ user cũ.
 
 ### Đồng bộ một chiều
-- Luôn qua màn xem trước (thêm / đổi từng trường cũ → mới / không còn trong nguồn / lỗi); **không tự áp dụng**. Mở app hoặc quay lại app, nếu file đổi thì hiện banner "Nguồn có thay đổi" kèm nút xem trước.
+- Mở app hoặc quay lại app, nếu file đổi thì app so với nguồn:
+  - **Chỉ có máy mới** (ADR-026b): tự thêm luôn, **không lưu mật khẩu**; hiện banner "Đã thêm N máy" với nút Xem / Hoàn tác / Đóng. Mỗi nguồn có toggle "Tự thêm máy mới" (mặc định bật).
+  - **Có bất kỳ sửa, máy biến mất, lỗi dòng hay cảnh báo** (vd thiếu `ansible_user`, cột mật khẩu bị bỏ, bộ đăng nhập cần tạo): không tự áp dụng; hiện banner "Nguồn có thay đổi" và màn xem trước như cũ (thêm / đổi từng trường cũ → mới / không còn trong nguồn / lỗi).
+  - Không tự thêm khi hub, wizard hoặc màn xem trước đang mở.
+  - **Hoàn tác** chỉ xoá những máy vừa thêm mà bạn **chưa sửa**, rồi tắt "Tự thêm máy mới" của nguồn đó. Chỉ dùng được trong phiên hiện tại. Mới có test đơn vị, chưa thử tay.
 - **Không tự xoá máy**: máy biến mất khỏi file chỉ bị đánh "Không còn trong nguồn". Xoá nguồn cũng không xoá máy.
 - Trường do nguồn quản lý (tên, địa chỉ, port, user, môi trường, thư mục, jump host) bị khoá trong form; ghi chú, yêu thích, forward, mật khẩu... vẫn là của app. Muốn sửa tay thì bấm "Tách khỏi nguồn".
 - **Tạm tắt tự điền mật khẩu:** khi IP/Port/User/Jump của máy đổi qua đồng bộ (hoặc bộ đăng nhập được gán từ file), app tạm tắt tự điền cho máy đó tới khi bạn mở chi tiết máy, xem lý do và bấm "Xác nhận". Lý do: file có thể bị sửa để trỏ tên máy quen sang địa chỉ lạ, và mật khẩu đã lưu sẽ bị đưa sang máy đó.
@@ -108,8 +112,8 @@ Ngoài cách mặc định (SSH vào máy đọc `/proc`), Monitor có thể đ�
 - **Dùng:** màn Monitor -> chọn nguồn cho từng thư mục. Gán theo **tên** thư mục: đổi tên thư mục thì thư mục đó về SSH. Làm mới chỉ khi màn Monitor đang hiện.
 - **Prometheus:** cần `node_exporter` trên các máy. Mẫu ghép nhãn `instance` mặc định `{{hostName}}:9100`, sửa được trong form nguồn nếu bạn dùng tên/cổng khác. Mỗi máy 6 truy vấn chạy song song.
 - **Zabbix:** tìm host theo host/name; token cần quyền đọc `host.get` và `item.get`. Hỗ trợ Zabbix 7 (Bearer) và bản cũ (token gửi trong trường `auth`). Không có thẻ swap.
-- **https khuyến nghị.** `http://` hiện cảnh báo đỏ; nếu có token và không phải loopback, phải tick "Tôi hiểu token gửi không mã hoá" mới lưu được. Do ATS của macOS, http chỉ chạy tới **IP, tên không có dấu chấm, hoặc `.local`**; http tới tên miền đầy đủ (vd `prom.corp.example.com`) bị chặn với lỗi "ATS chặn http tới tên miền; dùng https hoặc IP".
-- **TLS:** app không bao giờ tắt kiểm tra chứng chỉ. CA nội bộ phải được tin cậy trong macOS (Keychain Access).
+- **https khuyến nghị.** `http://` hiện cảnh báo đỏ; nếu có token và không phải loopback, phải tick "Tôi hiểu token gửi không mã hoá" mới lưu được. http tới tên miền nội bộ (vd `prom.corp.example.com`) được phép (ADR-028b, ATS đã nới), nhưng không mã hoá nên vẫn cảnh báo đỏ và cần tick khi gửi token qua http. https bắt buộc TLS >= 1.2.
+- **TLS:** https vẫn kiểm chứng chỉ, app không bao giờ tắt kiểm tra. CA nội bộ phải được tin cậy trong macOS (Keychain Access).
 - **Đổi URL (origin) hoặc kiểu xác thực** thì phải nhập lại token.
 - **Chưa kiểm chứng** với Prometheus/Zabbix/TLS thật và ATS khi chạy thật (xem [TESTING](docs/TESTING.md) K6). Đợt này chưa có nhật ký phiên, cảnh báo, liên kết Grafana.
 

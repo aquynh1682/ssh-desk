@@ -2,6 +2,13 @@
 
 Ghi mới nhất ở trên. Mỗi phiên: làm gì, còn dở gì, bước tiếp theo.
 
+## 2026-10-24 — Bước K (tiếp): trả lời của người dùng
+- ADR mới: 031 (lưu mật khẩu từ cột Excel/CSV của khách, bật từng lần), 028b (ATS `NSAllowsArbitraryLoads` + TLS ≥ 1.2 cho metrics), 026b (tự thêm khi nguồn chỉ có máy mới + Hoàn tác). Xác nhận PROD cho nút Mở Warp và gắn vào Warp: người dùng chưa muốn làm.
+- K8a, K8b: code xong, QA (K8a có Chặn → đã sửa) + PM duyệt, commit, tài liệu xong. Push nhánh `feat/e1-ssh-keys` (người dùng cho phép, không force).
+- make check: xanh 966 test ở commit K8b. Commit tài liệu K8b chạy make check lúc máy quá tải (load 10–42, hàng chục tiến trình SetStoreUpdateService) → đỏ ở test PTY/timing (lần 1: 12 lỗi; lần 2: 1 lỗi `catDoesNotEchoSentTextIntoEvents`); commit đó chỉ đổi .md nên PM vẫn commit. Cần chạy lại make check khi máy rảnh.
+- `ssh-keygen -w /usr/lib/ssh-keychain.dylib -K` báo "invalid format" trên máy dev từ 2026-10-23 (đã chạy được lúc K5) → test e2e SE bỏ qua hẹp; tạo khoá SE trong app cần thử tay.
+- `.claude/settings.json` vẫn có thay đổi chưa commit (agent chính sửa theo người dùng) — không đụng.
+
 ## 2026-10-23 — Bước K: hướng mở rộng chiến lược (PM agent)
 - ADR mới: 004b (một kho secret qua CredentialStore), 004c (Secure Enclave + ECIES, người dùng chọn), 023 (ký app), 024 (IdentityAgent), 025 (CLI/URL), 026 (nguồn đồng bộ: Excel mẫu/XLSX/CSV, JSON, Ansible), 027 (khoá SSH Secure Enclave, đã kiểm chứng), 028 (Prometheus/Zabbix), 029 (hỏi mật khẩu lần đầu), 030 (bộ đăng nhập password/key/passphrase/agent).
 - Code xong, QA + PM duyệt, commit (đều `[~]` chờ người dùng thử): K1, K2 (v8), K3, K4s (v9), K4e, K4a (v10), K4c, K4b, K5, K6 (v11). Tài liệu K1–K6 đã cập nhật. make check xanh 929 test.

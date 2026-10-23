@@ -118,6 +118,7 @@ Gom từ mục "Rủi ro chấp nhận" và "Chưa kiểm chứng" trong [archit
 - **Server cũ không hỗ trợ `sk-ecdsa`:** cần OpenSSH server >= 8.2; server cũ hơn sẽ từ chối khoá.
 - **`ssh-keygen -K` timeout 90 giây, không có nút Huỷ:** tạo khoá phải chờ hết hoặc xong.
 - **Identity tạo ngoài app chỉ xem** (khác `p-256-ne` hoặc nhãn không hợp lệ); nhiều identity trùng nhãn thì từ chối xoá. `sc_auth delete-ctk-identity` exit 0 cả khi lỗi nên app kiểm lại bằng list.
+- **`ssh-keygen -K` lỗi trên máy dev (2026-10-23):** với `ssh-keychain.dylib` báo "Unable to load resident keys: invalid format" (cùng macOS 27.0.1 lúc kiểm chứng trước đó chạy được; nguyên nhân chưa rõ). Test e2e SE bỏ qua đúng lỗi này; luồng tạo khoá trong app cần người dùng thử tay.
 - **Phụ thuộc file hệ thống** `/usr/lib/ssh-keychain.dylib` và `sc_auth`; thiếu thì mục này ẩn.
 - **ADR:** 027.
 
@@ -191,11 +192,11 @@ Chỉ có test đơn vị (`URLProtocol` giả); **chưa thử** với Prometheu
 - Gán nguồn theo **tên** thư mục: đổi tên thư mục thì thư mục đó về SSH.
 - Zabbix: không có swap; chỉ none/Bearer (không Basic, không đăng nhập bằng mật khẩu).
 - Prometheus: mỗi máy 6 truy vấn chạy song song, nhiều máy thì tải lên Prometheus tăng theo.
-- http tới tên miền đầy đủ (FQDN) bị ATS chặn; chỉ http tới IP, tên không dấu chấm, `.local` chạy được. Có cho phép rộng hơn không là **câu hỏi mở đang chờ người dùng quyết**.
+- **ATS nới cho toàn app** (ADR-028b, `NSAllowsArbitraryLoads`): hiện chỉ metrics dùng mạng. http tới tên miền nội bộ được phép nhưng **không mã hoá**: số liệu và token (nếu đã tick) có thể bị đọc/sửa trên đường truyền. https vẫn TLS >= 1.2 và kiểm chứng chỉ. Chưa kiểm chứng runtime.
 - Không tắt được kiểm tra TLS; CA nội bộ phải tự tin cậy trong macOS.
 - Nguồn metrics không hỏi xác nhận PROD (không chạy lệnh trên server).
 - Đợt này không có nhật ký phiên, cảnh báo/thông báo macOS, liên kết Grafana.
-- **ADR:** 028.
+- **ADR:** 028, 028b.
 
 ### B16. Lưu mật khẩu từ cột file khách (ADR-031)
 Chỉ có test đơn vị; **chưa thử** end-to-end trên máy thật. Kịch bản: TESTING mục K8a.
@@ -204,3 +205,10 @@ Chỉ có test đơn vị; **chưa thử** end-to-end trên máy thật. Kịch 
 - Bật từng lần, app không nhớ lựa chọn; đồng bộ lại/tự động không lưu mật khẩu.
 - Hai cột cùng tiêu đề: chỉ giữ cột đầu. Mật khẩu không trim (ô chỉ khoảng trắng = trống).
 - **ADR:** 031.
+
+### B17. Tự thêm máy mới từ nguồn (ADR-026b)
+Chỉ có test đơn vị; **chưa thử** end-to-end. Kịch bản: TESTING mục K8b.
+- **Hoàn tác chỉ trong phiên:** thoát app là mất nút Hoàn tác. Chỉ xoá máy chưa bị sửa; máy đã sửa được giữ. Sau Hoàn tác, "Tự thêm máy mới" của nguồn bị tắt.
+- **Cảnh báo nào cũng chặn tự thêm** (vd thiếu `ansible_user`, cột mật khẩu bị bỏ, bộ đăng nhập cần tạo), nên các lần đó phải qua xem trước.
+- Tự thêm không bao giờ lưu mật khẩu.
+- **ADR:** 026b.

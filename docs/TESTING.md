@@ -129,8 +129,8 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 4. **Xác thực Prometheus:** Bearer đúng/sai, Basic đúng/sai: sai báo lỗi trên thẻ, không lộ header/token. Đổi URL hoặc kiểu xác thực: bắt nhập lại token.
 5. **Zabbix 7:** token API (Bearer) đúng: "Thử kết nối" ok, thẻ hiện số (có tổng RAM/đĩa, số nhân, load 5/15, không có swap). **Zabbix bản cũ** (< 7.0, token trong `auth`): cùng kết quả.
 6. **Zabbix token sai:** báo lỗi xác thực rõ, **không tự thử lại** (kiểm log Zabbix chỉ 1 request lỗi mỗi lần làm mới). Token thiếu quyền `host.get`/`item.get`: báo lỗi quyền.
-7. **http tới FQDN:** nguồn `http://prom.corp.example.com:9090`: ATS chặn, app báo "ATS chặn http tới tên miền; dùng https hoặc IP". Ghi lại có đúng vậy không.
-8. **http tới IP + token:** `http://192.0.2.10:9090` với Bearer: form hiện cảnh báo đỏ, không lưu được nếu chưa tick "Tôi hiểu token gửi không mã hoá"; tick xong thì lưu và kết nối được. Loopback (`http://127.0.0.1`) không cần tick.
+7. **http tới tên miền nội bộ (ADR-028b):** nguồn `http://prom.corp.example.com:9090`: không còn bị ATS chặn, kết nối được; form vẫn cảnh báo đỏ. Ghi lại có đúng vậy không.
+8. **http + token:** `http://192.0.2.10:9090` (và cả tên miền nội bộ) với Bearer: form hiện cảnh báo đỏ, không lưu được nếu chưa tick "Tôi hiểu token gửi không mã hoá"; tick xong thì lưu và kết nối được. Loopback (`http://127.0.0.1`) không cần tick.
 9. **CA nội bộ:** https với chứng chỉ do CA nội bộ: khi CA chưa tin cậy trong macOS thì lỗi TLS (không có cách bỏ qua); sau khi tin cậy CA thì chạy.
 10. **Redirect / phản hồi lớn:** URL trả 3xx bị từ chối (không theo redirect); phản hồi > 5 MB bị bỏ.
 11. **Làm mới:** rời màn Monitor thì dừng gọi API; quay lại thì tiếp tục.
@@ -143,3 +143,13 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 5. **Nhắc xoá file gốc:** sau khi lưu có alert "Đã hiểu" nhắc xoá hoặc bảo vệ file Excel gốc.
 6. **Áp dụng lỗi:** gây lỗi (ví dụ kho lỗi hoặc DB lỗi): app báo số lỗi và nhắc bật lại; kế hoạch và bộ nhớ bị bỏ, không in mật khẩu.
 7. **Không lộ:** mật khẩu không có trong log, file DB, `config_json`.
+
+**K8b — Tự thêm máy mới (ADR-026b).** Cần `make install` và nguồn Excel/CSV giả (`192.0.2.x`). Mới có test đơn vị; ghi lại kết quả.
+1. **Tự thêm:** thêm một dòng máy mới vào file, quay lại app: máy được thêm luôn (không qua xem trước), banner "Đã thêm N máy"; máy không có mật khẩu.
+2. **Xem:** bấm Xem trên banner: tới đúng các máy vừa thêm.
+3. **Hoàn tác:** bấm Hoàn tác: các máy vừa thêm bị xoá, "Tự thêm máy mới" của nguồn tắt; lần đổi file sau hiện xem trước như cũ.
+4. **Sửa rồi Hoàn tác:** tự thêm 2 máy, sửa tay một máy (vd ghi chú), Hoàn tác: máy đã sửa được giữ, máy kia bị xoá.
+5. **Qua xem trước:** thêm một dòng mới và đồng thời sửa IP một dòng khác: không tự thêm, hiện banner "Nguồn có thay đổi" và xem trước. Tương tự khi có dòng lỗi, thiếu `ansible_user` hoặc cột mật khẩu.
+6. **Toggle:** tắt "Tự thêm máy mới" rồi thêm dòng: qua xem trước.
+
+**Ghi chú tạo khoá Secure Enclave (K5):** `ssh-keygen -w /usr/lib/ssh-keychain.dylib -K` đang báo "Unable to load resident keys: invalid format" trên máy dev (2026-10-23), nên test e2e SE bỏ qua lỗi này và luồng "Tạo khoá Secure Enclave…" trong app cần thử tay.
