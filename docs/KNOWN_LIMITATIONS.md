@@ -196,3 +196,11 @@ Chỉ có test đơn vị (`URLProtocol` giả); **chưa thử** với Prometheu
 - Nguồn metrics không hỏi xác nhận PROD (không chạy lệnh trên server).
 - Đợt này không có nhật ký phiên, cảnh báo/thông báo macOS, liên kết Grafana.
 - **ADR:** 028.
+
+### B16. Lưu mật khẩu từ cột file khách (ADR-031)
+Chỉ có test đơn vị; **chưa thử** end-to-end trên máy thật. Kịch bản: TESTING mục K8a.
+- `String`/bản sao `[UInt8]` tạm khi đọc file (XMLParser/CSV) và khi gọi `savePassword` không xoá chủ động được; chỉ buffer của `SecretBytes` được ghi 0.
+- File Excel/CSV gốc vẫn chứa mật khẩu dạng rõ; app không tự xoá, chỉ nhắc.
+- Bật từng lần, app không nhớ lựa chọn; đồng bộ lại/tự động không lưu mật khẩu.
+- Hai cột cùng tiêu đề: chỉ giữ cột đầu. Mật khẩu không trim (ô chỉ khoảng trắng = trống).
+- **ADR:** 031.

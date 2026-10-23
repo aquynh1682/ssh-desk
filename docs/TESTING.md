@@ -134,3 +134,12 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 9. **CA nội bộ:** https với chứng chỉ do CA nội bộ: khi CA chưa tin cậy trong macOS thì lỗi TLS (không có cách bỏ qua); sau khi tin cậy CA thì chạy.
 10. **Redirect / phản hồi lớn:** URL trả 3xx bị từ chối (không theo redirect); phản hồi > 5 MB bị bỏ.
 11. **Làm mới:** rời màn Monitor thì dừng gọi API; quay lại thì tiếp tục.
+
+**K8a — Lưu mật khẩu từ cột file khách (ADR-031).** Cần `make install` và một file Excel/CSV giả (host ví dụ `192.0.2.10`, không server thật cho tới bước tự điền). Mới có test đơn vị; ghi lại kết quả.
+1. **Mặc định bỏ qua:** nhập file có cột "Mật khẩu": cảnh báo "sẽ bỏ qua", tuỳ chọn lưu tắt; sau nhập máy không có mật khẩu.
+2. **Bật lưu:** bật "Lưu mật khẩu từ cột ..."; xem trước chỉ hiện ••••, có số máy sẽ lưu / đã có mật khẩu riêng; bấm Áp dụng hiện xác nhận "Lưu mật khẩu cho N máy"; sau đó mở Warp máy đó, kiểm tự điền chạy (server thật hoặc sshd tạm 127.0.0.1).
+3. **Máy đã có mật khẩu:** không bật "Ghi đè" thì giữ mật khẩu cũ; bật "Ghi đè" thì mật khẩu mới thay. Ô trống không đụng.
+4. **Đồng bộ lại:** "Đồng bộ lại"/"Chọn file mới…" không tự lưu mật khẩu (phải bật lại); tự áp dụng khi chỉ có máy mới cũng không lưu.
+5. **Nhắc xoá file gốc:** sau khi lưu có alert "Đã hiểu" nhắc xoá hoặc bảo vệ file Excel gốc.
+6. **Áp dụng lỗi:** gây lỗi (ví dụ kho lỗi hoặc DB lỗi): app báo số lỗi và nhắc bật lại; kế hoạch và bộ nhớ bị bỏ, không in mật khẩu.
+7. **Không lộ:** mật khẩu không có trong log, file DB, `config_json`.
