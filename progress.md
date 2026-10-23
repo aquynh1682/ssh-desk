@@ -3,10 +3,13 @@
 Ghi mới nhất ở trên. Mỗi phiên: làm gì, còn dở gì, bước tiếp theo.
 
 ## 2026-10-23 — Bước K: hướng mở rộng chiến lược (PM agent)
-- ADR mới: 023 (ký app), 024 (IdentityAgent), 025 (CLI/URL), 026 (nguồn đồng bộ + Excel mẫu/XLSX/CSV, JSON, Ansible), 027 (Secure Enclave — researcher kiểm chứng ĐƯỢC với `-t none`), 028 (Prometheus/Zabbix), 029 (hỏi mật khẩu lần đầu), 030 (bộ đăng nhập có password/key/passphrase/agent), 004b (một kho secret qua CredentialStore; backend SE cho password CHƯA chốt, chờ nghiên cứu).
-- Xong (QA + PM duyệt, commit): K1 ký app, K2 IdentityAgent (v8), K3 CLI + URL scheme. Tài liệu K1–K3 đã cập nhật.
-- Đang làm: K4s bộ đăng nhập + cột hold (v9). Tiếp: K4a nguồn + Excel (v10) → K4c → K4b → K5 → K6 (v11).
-- Lưu ý: make check có lần đỏ không tái hiện (1/4 lần) — đã sửa một test Monitor dựa vào sleep; nếu còn, tìm test timing khác. `~/.ssh/known_hosts` đổi lúc 23:44 ngày 22 (thêm 172.16.50.120) — không phải do agent/test (test dùng known_hosts tạm), có lẽ người dùng tự ssh.
+- ADR mới: 004b (một kho secret qua CredentialStore), 004c (Secure Enclave + ECIES, người dùng chọn), 023 (ký app), 024 (IdentityAgent), 025 (CLI/URL), 026 (nguồn đồng bộ: Excel mẫu/XLSX/CSV, JSON, Ansible), 027 (khoá SSH Secure Enclave, đã kiểm chứng), 028 (Prometheus/Zabbix), 029 (hỏi mật khẩu lần đầu), 030 (bộ đăng nhập password/key/passphrase/agent).
+- Code xong, QA + PM duyệt, commit (đều `[~]` chờ người dùng thử): K1, K2 (v8), K3, K4s (v9), K4e, K4a (v10), K4c, K4b, K5, K6 (v11). Tài liệu K1–K6 đã cập nhật. make check xanh 929 test.
+- Quyết định bảo mật PM tự siết: tắt tự điền passphrase qua PTY (chỉ askpass/Warp); askpass chỉ nhận prompt passphrase không có tiền tố `(user@host)`.
+- **Chưa commit, KHÔNG đụng:** `.claude/settings.json` — agent chính sửa theo yêu cầu người dùng.
+- **Câu hỏi chờ người dùng:** (1) Excel/CSV có cột password: có cho lưu thẳng vào kho (Keychain/SE) theo từng host không — đề xuất KHÔNG (bỏ qua mặc định, nhập trong app qua sheet ADR-029); (2) http tới FQDN nội bộ cho Prometheus/Zabbix bị ATS chặn — giữ chặn (đề xuất) hay thêm ngoại lệ; (3) nguồn đồng bộ: có muốn tự áp dụng khi chỉ có thêm mới không — đề xuất luôn xem trước; (4) nút Mở Warp trong UI chưa hỏi xác nhận PROD (chỉ URL/CLI) — có muốn thêm không.
+- **Người dùng cần thử:** tạo chứng chỉ ký + `make install SIGN_IDENTITY=...` hai lần; migration mật khẩu sang SE (Keychain Access: hết `local.sshdesk.credentials`); askpass dưới Warp không hỏi Keychain; file mẫu Excel trong Excel/Numbers (dropdown); nhập Excel/Ansible thật; sheet mật khẩu lần đầu với server có password; khoá SE `-t bio`; URL scheme + `sshdesk open`; Prometheus/Zabbix thật.
+- Lưu ý: make check có lúc đỏ do test timing dưới tải (Monitor, portProbe) — chạy lại xanh. `~/.ssh/known_hosts` đổi ngày 22 lúc 23:44 (thêm 172.16.50.120) không do agent/test.
 
 ## 2026-10-22 (tiếp) — E3, D1–D4, harness
 - E3 port forward, D1 xuất/nhập, D4 Cài đặt, D2 vòng đời app, D3 tài liệu: code xong, PM duyệt; D4/D2 đã qua qa-reviewer. make check xanh 575 test.

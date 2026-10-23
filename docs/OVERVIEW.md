@@ -28,6 +28,7 @@ Thư mục trong `SSHDeskCore/`:
 - `Keys/` — kiểm kê, tạo, cài SSH key. `Tunnel/` — `TunnelManager`, `PortForward`.
 - `Analyst/`, `Monitor/` — lệnh whitelist, parser, coordinator. `Windows/` — `.rdp`, Windows App, clipboard bí mật.
 - `Inventory/` — nguồn máy chủ đồng bộ một chiều (ADR-026): `BoundedProcess`, `XLSXReader`, `CSVReader`, `ColumnMapping`, `InventoryTableParser`, `InventorySync` (dựng kế hoạch), `InventoryRepository` (áp dụng), `InventoryTemplate` (sinh file mẫu), `InventoryFile`, `InventoryStructured` (nguồn JSON/Ansible), `AnsibleInventory` (INI), `AnsibleYAML` (YAML tập con). Ansible tự parse, **không chạy process**.
+- `Metrics/` — Monitor từ Prometheus/Zabbix (ADR-028): `MetricsSource` (model), repository/service (nguồn + gán thư mục), `PrometheusClient` (6 truy vấn node_exporter cố định, escape nhãn PromQL), `ZabbixClient` (chỉ `apiinfo.version`/`host.get`/`item.get`), `MetricsMonitorCoordinator`. `MetricsTransport`: session ephemeral (không cookie/cache), chặn mọi redirect, đọc theo chunk và bỏ phản hồi > 5 MB, timeout 10 giây, không xử lý challenge TLS (không bao giờ chấp nhận cert sai). Token đọc từ kho secret (account `metrics-<uuid>`), gửi qua header `Authorization`.
 - `Exchange/` — xuất/nhập JSON. `Settings/` — `AppSettings`, `SettingsRepository` (đang hoàn thiện). `App/` — `AppPaths`, `ConnectionService`, `HostDraft`, `QuitActivity` (đang hoàn thiện).
 
 ## Luồng chính
@@ -84,6 +85,7 @@ Thư mục trong `SSHDeskCore/`:
 | v8 | `hosts.identity_agent` | 024 |
 | v9 | `credential_sets`; `hosts.credential_set_id`, `autofill_hold`, `autofill_hold_reason` (cột nguồn đồng bộ ADR-026 thêm sau) | 030 |
 | v10 | `inventory_sources`; `hosts.source_id`, `external_id`, `source_missing` (nguồn máy chủ đồng bộ một chiều) | 026 |
+| v11 | `metric_sources` (kind, base_url, auth_kind, basic_user, credential_ref, instance_template, allow_insecure_http); `metric_folder_sources(folder PK, source_id FK CASCADE)` | 028 |
 
 ## Danh sách ADR
 Chi tiết trong [architecture.md](architecture.md).
@@ -121,3 +123,4 @@ Chi tiết trong [architecture.md](architecture.md).
 | 029 | Hỏi mật khẩu lần đầu + "Lưu vào Keychain" | Sheet khi máy chưa có mật khẩu; kiểm tra đăng nhập trước khi lưu (không `StrictHostKeyChecking=no`, không tự yes host key); không tích lưu thì giữ trong bộ nhớ theo phiên (Warp thì gõ trong terminal); lưu vào máy/bộ có sẵn/bộ mới (cùng ADR-030). |
 | 030 | Bộ đăng nhập dùng chung | `credential_sets`, `CredentialResolution` (host > bộ > Cài đặt), passphrase chỉ qua askpass, hold khi gán từ file. |
 | 026 | Nguồn máy chủ đồng bộ một chiều | Excel/CSV (file mẫu + ghép cột), JSON, Ansible tĩnh đã làm (chỉ test đơn vị). Luôn xem trước, một transaction, không tự xoá, hold khi địa chỉ đổi. |
+| 028 | Monitor đọc Prometheus/Zabbix | Bổ sung cho Monitor SSH; chỉ API đọc; token trong kho secret; không tắt kiểm tra TLS; http cảnh báo + tick khi có token; ATS chỉ mở http tới IP/tên không chấm/`.local`; chặn redirect, cap 5 MB; gán nguồn theo tên thư mục. Chỉ test đơn vị. |

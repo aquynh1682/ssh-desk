@@ -121,3 +121,16 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 5. **Xoá khoá:** "Xoá khoá Secure Enclave": có xác nhận cảnh báo không khôi phục; xong, identity biến mất khỏi `sc_auth list-ctk-identities`, file handle trong `~/.ssh` bị xoá, các file khác không đụng. Đăng nhập bằng khoá cũ phải thất bại.
 6. **Identity ngoài app:** nếu có identity tạo bằng `sc_auth` kiểu khác, app chỉ xem, không có nút xoá.
 7. **Máy thiếu dylib:** (máy khác hoặc đổi tên tạm đường dẫn không được, vì là file hệ thống; chỉ ghi nhận nếu có máy không có `/usr/lib/ssh-keychain.dylib`) mục "Tạo khoá Secure Enclave" phải ẩn, không lỗi.
+
+**K6 — Monitor từ Prometheus/Zabbix (ADR-028).** Cần `make install` và hệ thống giám sát thật (không PROD nếu tránh được). Mới có test đơn vị với `URLProtocol` giả; ghi lại kết quả.
+1. **Prometheus thật:** Cài đặt -> Nguồn số liệu -> thêm Prometheus (URL https), "Thử kết nối" báo thành công. Màn Monitor: chọn nguồn cho một thư mục; thẻ CPU/RAM/swap/đĩa/load/uptime hiện số khớp với `node_exporter`/Grafana của bạn. Đổi tên thư mục: về SSH. Xoá nguồn: thư mục về SSH.
+2. **Ngưỡng màu:** máy có CPU/RAM/đĩa cao (hoặc hạ ngưỡng trong Cài đặt -> Monitor): thẻ đổi màu đúng ngưỡng.
+3. **Mẫu instance:** máy dùng tên/cổng khác `{{hostName}}:9100`: ban đầu thẻ báo không có dữ liệu; sửa mẫu instance trong nguồn thì có số. Mẫu có ký tự `"` hoặc `\` không làm hỏng truy vấn.
+4. **Xác thực Prometheus:** Bearer đúng/sai, Basic đúng/sai: sai báo lỗi trên thẻ, không lộ header/token. Đổi URL hoặc kiểu xác thực: bắt nhập lại token.
+5. **Zabbix 7:** token API (Bearer) đúng: "Thử kết nối" ok, thẻ hiện số (có tổng RAM/đĩa, số nhân, load 5/15, không có swap). **Zabbix bản cũ** (< 7.0, token trong `auth`): cùng kết quả.
+6. **Zabbix token sai:** báo lỗi xác thực rõ, **không tự thử lại** (kiểm log Zabbix chỉ 1 request lỗi mỗi lần làm mới). Token thiếu quyền `host.get`/`item.get`: báo lỗi quyền.
+7. **http tới FQDN:** nguồn `http://prom.corp.example.com:9090`: ATS chặn, app báo "ATS chặn http tới tên miền; dùng https hoặc IP". Ghi lại có đúng vậy không.
+8. **http tới IP + token:** `http://192.0.2.10:9090` với Bearer: form hiện cảnh báo đỏ, không lưu được nếu chưa tick "Tôi hiểu token gửi không mã hoá"; tick xong thì lưu và kết nối được. Loopback (`http://127.0.0.1`) không cần tick.
+9. **CA nội bộ:** https với chứng chỉ do CA nội bộ: khi CA chưa tin cậy trong macOS thì lỗi TLS (không có cách bỏ qua); sau khi tin cậy CA thì chạy.
+10. **Redirect / phản hồi lớn:** URL trả 3xx bị từ chối (không theo redirect); phản hồi > 5 MB bị bỏ.
+11. **Làm mới:** rời màn Monitor thì dừng gọi API; quay lại thì tiếp tục.

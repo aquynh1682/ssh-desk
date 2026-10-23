@@ -85,7 +85,7 @@ Trong hub "Nguồn máy chủ…", menu "Thêm nguồn" có Excel/CSV, JSON, Ans
   ```
 - **Port forward (-L):** lưu danh sách forward theo host, Mở/Dừng tunnel riêng, hiển thị trạng thái.
 - **Project Analyst:** quét một thư mục server (Linux), dựng bản đồ kết nối giữa các server, thử kết nối TCP, lưu lịch sử, xuất báo cáo Markdown/CSV.
-- **Monitor:** lưới thẻ CPU / RAM / swap / đĩa / load / uptime theo thư mục (Linux).
+- **Monitor:** lưới thẻ CPU / RAM / swap / đĩa / load / uptime theo thư mục (Linux). Mỗi thư mục chọn nguồn: SSH (mặc định) hoặc Prometheus/Zabbix (mục dưới).
 - **Máy Windows:** khai báo host RDP, mở bằng Windows App qua file `.rdp`; tuỳ chọn copy mật khẩu lên clipboard khi mở (tự xoá).
 - **CLI `sshdesk` + liên kết `sshdesk://`:** liệt kê và mở host từ terminal, Alfred, Raycast (mục bên dưới). Chưa thử tay.
 - **Nguồn máy chủ:** nhập và đồng bộ một chiều từ Excel/CSV (có file mẫu), JSON, Ansible inventory tĩnh (mục trên).
@@ -101,6 +101,17 @@ Mở máy SSH dùng mật khẩu mà chưa lưu thì app hiện sheet "Nhập m�
 - **Không tích lưu:** mở Warp thì app không giữ mật khẩu, bạn gõ trong terminal. Analyst, Monitor, Truyền file (sheet Tải về/Tải lên) giữ mật khẩu trong bộ nhớ app tới khi đóng phiên, không ghi ra đâu; đổi địa chỉ máy thì bỏ mục tạm.
 - **Máy Windows:** sheet có ô "Lưu vào Keychain"; không kiểm tra được; mật khẩu copy lên clipboard như mục Windows (không tích thì copy một lần, không lưu).
 - Mới có test đơn vị và ssh giả, **chưa thử với server thật** (xem [TESTING](docs/TESTING.md) K4c).
+
+### Monitor từ Prometheus/Zabbix (ADR-028)
+Ngoài cách mặc định (SSH vào máy đọc `/proc`), Monitor có thể đọc số liệu từ hệ thống giám sát có sẵn. Chỉ gọi API đọc, không chạy lệnh trên server.
+- **Thêm nguồn:** Cài đặt -> "Nguồn số liệu": chọn loại (Prometheus/Zabbix), URL, xác thực. Prometheus: không / Bearer / Basic. Zabbix: không / Bearer (token API; không hỗ trợ Basic hay đăng nhập bằng mật khẩu). Token lưu trong kho mã hoá Secure Enclave, không vào DB/log/URL. Bấm "Thử kết nối" để kiểm tra.
+- **Dùng:** màn Monitor -> chọn nguồn cho từng thư mục. Gán theo **tên** thư mục: đổi tên thư mục thì thư mục đó về SSH. Làm mới chỉ khi màn Monitor đang hiện.
+- **Prometheus:** cần `node_exporter` trên các máy. Mẫu ghép nhãn `instance` mặc định `{{hostName}}:9100`, sửa được trong form nguồn nếu bạn dùng tên/cổng khác. Mỗi máy 6 truy vấn chạy song song.
+- **Zabbix:** tìm host theo host/name; token cần quyền đọc `host.get` và `item.get`. Hỗ trợ Zabbix 7 (Bearer) và bản cũ (token gửi trong trường `auth`). Không có thẻ swap.
+- **https khuyến nghị.** `http://` hiện cảnh báo đỏ; nếu có token và không phải loopback, phải tick "Tôi hiểu token gửi không mã hoá" mới lưu được. Do ATS của macOS, http chỉ chạy tới **IP, tên không có dấu chấm, hoặc `.local`**; http tới tên miền đầy đủ (vd `prom.corp.example.com`) bị chặn với lỗi "ATS chặn http tới tên miền; dùng https hoặc IP".
+- **TLS:** app không bao giờ tắt kiểm tra chứng chỉ. CA nội bộ phải được tin cậy trong macOS (Keychain Access).
+- **Đổi URL (origin) hoặc kiểu xác thực** thì phải nhập lại token.
+- **Chưa kiểm chứng** với Prometheus/Zabbix/TLS thật và ATS khi chạy thật (xem [TESTING](docs/TESTING.md) K6). Đợt này chưa có nhật ký phiên, cảnh báo, liên kết Grafana.
 
 ### Trạng thái kiểm chứng
 Tất cả logic có test tự động. Nhưng nhiều tính năng mới chỉ chạy với sshd tạm ở `127.0.0.1` và **chưa được thử tay với server thật** (đánh dấu `[~]` trong [plan.md](plan.md)):
@@ -118,6 +129,7 @@ Tất cả logic có test tự động. Nhưng nhiều tính năng mới chỉ c
 | SSH Keys (E1), Port forward (E3) | Chỉ sshd tạm | Server thật |
 | Khoá Secure Enclave (K5, ADR-027) | `-t none` + sshd tạm 127.0.0.1; kiểm chứng lệnh tay trên macOS 27 | `-t bio` (Touch ID mỗi lần ký), Warp/Analyst, server thật (TESTING mục K5) |
 | Monitor (I1/I2) | Chưa | Server Linux thật, giao diện |
+| Monitor Prometheus/Zabbix (K6, ADR-028) | Chỉ test đơn vị (URLProtocol giả) | Prometheus/Zabbix thật, TLS, ATS (TESTING mục K6) |
 | Xuất/nhập (D1) | Chỉ test | Thử tay |
 | Nguồn máy chủ Excel/CSV (K4a) | Chỉ test đơn vị; XLSX kiểm bằng unzip/zip của macOS | Mở file mẫu trong Excel/Numbers, thử tay (TESTING mục K4a) |
 | Cài đặt (D4), vòng đời app (D2) | — | Đang làm |

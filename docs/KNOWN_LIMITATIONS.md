@@ -185,3 +185,14 @@ Chỉ có test đơn vị và ssh giả; **chưa thử với server thật**: ho
 - `ssh-copy-id` với `.pub` sk-ecdsa lên server thật.
 - Hành vi prompt PIN/passphrase của `-K` trên các phiên bản macOS khác.
 Kịch bản: TESTING mục K5. **ADR:** 027.
+
+### B15. Monitor Prometheus/Zabbix (ADR-028)
+Chỉ có test đơn vị (`URLProtocol` giả); **chưa thử** với Prometheus/Zabbix thật, TLS thật (kể cả CA nội bộ), và hành vi ATS khi chạy `.app`. Kịch bản: TESTING mục K6.
+- Gán nguồn theo **tên** thư mục: đổi tên thư mục thì thư mục đó về SSH.
+- Zabbix: không có swap; chỉ none/Bearer (không Basic, không đăng nhập bằng mật khẩu).
+- Prometheus: mỗi máy 6 truy vấn chạy song song, nhiều máy thì tải lên Prometheus tăng theo.
+- http tới tên miền đầy đủ (FQDN) bị ATS chặn; chỉ http tới IP, tên không dấu chấm, `.local` chạy được. Có cho phép rộng hơn không là **câu hỏi mở đang chờ người dùng quyết**.
+- Không tắt được kiểm tra TLS; CA nội bộ phải tự tin cậy trong macOS.
+- Nguồn metrics không hỏi xác nhận PROD (không chạy lệnh trên server).
+- Đợt này không có nhật ký phiên, cảnh báo/thông báo macOS, liên kết Grafana.
+- **ADR:** 028.
