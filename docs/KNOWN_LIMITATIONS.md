@@ -112,6 +112,15 @@ Gom từ mục "Rủi ro chấp nhận" và "Chưa kiểm chứng" trong [archit
 - **Nút "Mở Warp" trong UI không hỏi xác nhận PROD** (chỉ URL scheme/CLI có); hành vi cũ, không đổi bởi ADR-029. Với PROD, sheet mật khẩu vẫn xác nhận PROD trước.
 - **ADR:** 029.
 
+### A19. Khoá SSH trong Secure Enclave (ADR-027)
+- **Khoá gắn máy:** private key nằm trong chip, không backup, không xuất. Đổi máy hoặc cài lại macOS là mất khoá; phải tạo khoá mới và cài lại lên server (nên giữ thêm một khoá dự phòng).
+- **Xoá không khôi phục được**, và server vẫn tin public key cũ cho tới khi bạn gỡ khỏi `authorized_keys`.
+- **Server cũ không hỗ trợ `sk-ecdsa`:** cần OpenSSH server >= 8.2; server cũ hơn sẽ từ chối khoá.
+- **`ssh-keygen -K` timeout 90 giây, không có nút Huỷ:** tạo khoá phải chờ hết hoặc xong.
+- **Identity tạo ngoài app chỉ xem** (khác `p-256-ne` hoặc nhãn không hợp lệ); nhiều identity trùng nhãn thì từ chối xoá. `sc_auth delete-ctk-identity` exit 0 cả khi lỗi nên app kiểm lại bằng list.
+- **Phụ thuộc file hệ thống** `/usr/lib/ssh-keychain.dylib` và `sc_auth`; thiếu thì mục này ẩn.
+- **ADR:** 027.
+
 ## B. Chưa kiểm chứng (với hệ thống thật)
 
 ### B1. Truyền file với server thật
@@ -168,3 +177,11 @@ Chỉ có test đơn vị (đọc XLSX kiểm chứng bằng `unzip`/`zip` của
 ### B13. Hỏi mật khẩu lần đầu (ADR-029)
 Chỉ có test đơn vị và ssh giả; **chưa thử với server thật**: host key mới, mật khẩu đúng/sai, mất mạng, bộ sai + cập nhật bộ, OTP, Monitor/Analyst nhiều máy, sheet lồng Tải về/Tải lên + Esc, Windows. Kịch bản: TESTING mục K4c.
 - **ADR:** 029, 030.
+
+### B14. Khoá Secure Enclave (ADR-027)
+Đã kiểm chứng bằng lệnh tay (macOS 27, OpenSSH_10.3p1) và test đơn vị/`-t none` với sshd tạm 127.0.0.1. **Chưa kiểm chứng:**
+- `-t bio` (Touch ID mỗi lần ký) khi tạo và khi đăng nhập qua Warp.
+- Kết nối `BatchMode` (Project Analyst, Monitor) với khoá Touch ID: có thể timeout hoặc thất bại vì không ai kịp chạm Touch ID.
+- `ssh-copy-id` với `.pub` sk-ecdsa lên server thật.
+- Hành vi prompt PIN/passphrase của `-K` trên các phiên bản macOS khác.
+Kịch bản: TESTING mục K5. **ADR:** 027.

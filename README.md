@@ -76,6 +76,13 @@ Trong hub "Nguồn máy chủ…", menu "Thêm nguồn" có Excel/CSV, JSON, Ans
 - **Agent ngoài (1Password, Bitwarden, Secretive):** chọn agent ở form host (mục Nâng cao) hoặc đặt mặc định trong Cài đặt → SSH config. App chỉ ghi `IdentityAgent "<socket>"` vào config của app, không đọc private key. Với agent ngoài nên để IdentityFile trống, hoặc trỏ tới file `.pub` của key nằm trong agent. Màn SSH Keys có thẻ "Key trong agent" (liệt kê public key bằng `ssh-add -L`). Chỉ áp dụng cho host managed loại SSH. Chưa thử với agent thật.
 - **Truyền file kiểu Xftp:** hai khung (Mac | server), tab cho từng server, kéo thả, hàng đợi (huỷ, thử lại, ghi đè/đổi tên/bỏ qua), tạo thư mục / đổi tên / xoá trên server. Dùng `scp` (giao thức SFTP) và `sftp` qua một kết nối ControlMaster mỗi tab.
 - **SSH Keys:** liệt kê key trong `~/.ssh` (chỉ đọc `*.pub`), tạo key mới, "Cài key lên server" (`ssh-copy-id`).
+- **Khoá SSH trong Secure Enclave (ADR-027):** màn SSH Keys có nút "Tạo khoá Secure Enclave…" (dùng `/usr/lib/ssh-keychain.dylib` có sẵn của macOS, không cài thêm gì). Nhập nhãn (`A-Z a-z 0-9 . _ -`, tối đa 64 ký tự, chưa trùng identity có sẵn), chọn bảo vệ bằng Touch ID (mặc định) hoặc không. Private key sinh và nằm trong chip, **không rời chip**; file `~/.ssh/id_ecdsa_sk_rk_<nhãn>` (+ `.pub`) chỉ là tham chiếu, không chứa key, không ghi đè file đã có. Cài lên server bằng "Cài lên server…" như key thường. Host (hoặc bộ đăng nhập) dùng khoá này thì app tự thêm `SecurityKeyProvider "/usr/lib/ssh-keychain.dylib"` vào Host block trong config của app (không ghi toàn cục, không đụng `~/.ssh/config`). Xoá khoá bằng "Xoá khoá Secure Enclave" (có xác nhận) **không khôi phục được**: server còn tin public key đó nhưng bạn không đăng nhập được nữa, nhớ gỡ khỏi `authorized_keys`. Identity tạo ngoài app (không phải `p-256-ne` hoặc nhãn lạ) chỉ xem, không xoá từ app. Mục này ẩn nếu máy thiếu dylib. Chưa thử `-t bio` và đăng nhập thật, xem bảng bên dưới.
+  Lệnh tay tương đương (để hiểu app làm gì; chạy trong thư mục tạm vì `-K` xuất mọi resident key, nhấn Enter ở PIN/passphrase):
+  ```
+  sc_auth create-ctk-identity -l <nhãn> -k p-256-ne -t bio -N <nhãn>   # -t none nếu không dùng Touch ID
+  ssh-keygen -w /usr/lib/ssh-keychain.dylib -K
+  ssh -o SecurityKeyProvider=/usr/lib/ssh-keychain.dylib -i id_ecdsa_sk_rk_<nhãn> user@example.com
+  ```
 - **Port forward (-L):** lưu danh sách forward theo host, Mở/Dừng tunnel riêng, hiển thị trạng thái.
 - **Project Analyst:** quét một thư mục server (Linux), dựng bản đồ kết nối giữa các server, thử kết nối TCP, lưu lịch sử, xuất báo cáo Markdown/CSV.
 - **Monitor:** lưới thẻ CPU / RAM / swap / đĩa / load / uptime theo thư mục (Linux).
@@ -109,6 +116,7 @@ Tất cả logic có test tự động. Nhưng nhiều tính năng mới chỉ c
 | Bộ đăng nhập (K4s), kho Secure Enclave + migration (K4e) | Chỉ test đơn vị | Thử tay trên `.app` đã cài (TESTING mục K4s/K4e) |
 | Hỏi mật khẩu lần đầu (K4c) | Chỉ test đơn vị + ssh giả | Server thật (TESTING mục K4c) |
 | SSH Keys (E1), Port forward (E3) | Chỉ sshd tạm | Server thật |
+| Khoá Secure Enclave (K5, ADR-027) | `-t none` + sshd tạm 127.0.0.1; kiểm chứng lệnh tay trên macOS 27 | `-t bio` (Touch ID mỗi lần ký), Warp/Analyst, server thật (TESTING mục K5) |
 | Monitor (I1/I2) | Chưa | Server Linux thật, giao diện |
 | Xuất/nhập (D1) | Chỉ test | Thử tay |
 | Nguồn máy chủ Excel/CSV (K4a) | Chỉ test đơn vị; XLSX kiểm bằng unzip/zip của macOS | Mở file mẫu trong Excel/Numbers, thử tay (TESTING mục K4a) |

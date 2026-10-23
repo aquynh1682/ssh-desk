@@ -112,3 +112,12 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 8. **Windows:** máy Windows chưa có mật khẩu -> Mở: sheet có ô "Lưu vào Keychain"; không tích thì dán được một lần (⌘V), clipboard tự xoá, không có mục Keychain mới.
 9. **Mật khẩu tạm biến mất:** nhập không tích lưu cho Monitor, đóng Monitor, mở lại: phải hỏi lại. Đổi IP/Port/User của máy khi đang có mật khẩu tạm: hỏi lại.
 10. **Cài đặt:** tắt "Hỏi mật khẩu khi máy chưa lưu" -> không còn sheet, quay luồng terminal hỏi. Máy PROD: xác nhận PROD trước sheet.
+
+**K5 — Khoá Secure Enclave (ADR-027).** Cần `make install`, máy có Touch ID, server test (không PROD). Mới có test đơn vị và `-t none` với sshd tạm; ghi lại kết quả, nhất là `-t bio`.
+1. **Tạo khoá Touch ID:** SSH Keys -> "Tạo khoá Secure Enclave…", nhãn `test-se`, giữ Touch ID mặc định. Có hỏi Touch ID/mật khẩu máy không, có hiện prompt lạ nào (PIN/passphrase) không; tạo xong thẻ khoá hiện, `~/.ssh/id_ecdsa_sk_rk_test-se` và `.pub` tồn tại, `.pub` loại `sk-ecdsa-sha2-nistp256@openssh.com`. Thử nhãn trùng và nhãn sai ký tự: báo lỗi; tạo lại khi file đã có: không ghi đè.
+2. **Cài lên server test:** "Cài lên server…" chọn khoá đó (nhập password server nếu cần). Ghi lại: `ssh-copy-id` với `.pub` sk-ecdsa có chạy được không, server cũ (OpenSSH < 8.2) có từ chối không.
+3. **Warp:** đặt IdentityFile của host là khoá này, kiểm `ssh -G -F "$HOME/Library/Application Support/SSHDesk/ssh/config" sshdesk-<uuid> | grep -i securitykeyprovider`. Mở Warp: phải hiện Touch ID mỗi lần ký (mở lần hai cũng hỏi lại).
+4. **Analyst / Monitor (BatchMode):** chạy với host dùng khoá Touch ID: ghi lại có hiện Touch ID kịp không hay timeout/thất bại.
+5. **Xoá khoá:** "Xoá khoá Secure Enclave": có xác nhận cảnh báo không khôi phục; xong, identity biến mất khỏi `sc_auth list-ctk-identities`, file handle trong `~/.ssh` bị xoá, các file khác không đụng. Đăng nhập bằng khoá cũ phải thất bại.
+6. **Identity ngoài app:** nếu có identity tạo bằng `sc_auth` kiểu khác, app chỉ xem, không có nút xoá.
+7. **Máy thiếu dylib:** (máy khác hoặc đổi tên tạm đường dẫn không được, vì là file hệ thống; chỉ ghi nhận nếu có máy không có `/usr/lib/ssh-keychain.dylib`) mục "Tạo khoá Secure Enclave" phải ẩn, không lỗi.
