@@ -36,6 +36,13 @@ case .list(let folder, let json):
     do { out(json ? try CLIHostList.json(entries) : CLIHostList.table(entries)) } catch {
         fail("không xuất được JSON: \(error)", code: 1)
     }
+case .template(let path):
+    // Ghi file Excel mẫu mới (ADR-026): không ghi đè, không đụng DB / SSH config.
+    let url = URL(fileURLWithPath: path)
+    do {
+        try InventoryTemplate.write(to: url)
+        out("Đã ghi file mẫu: \(url.standardizedFileURL.path)")
+    } catch { fail("\(error)", code: 1) }
 case .open(let query):
     let hosts = await loadHosts(paths)
     let host: HostProfile

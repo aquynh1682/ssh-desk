@@ -34,6 +34,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
+    /// App được kích hoạt lại: kiểm tra file nguồn có đổi không (ADR-026). Không tự áp dụng.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        let model = AppModel.shared
+        guard model.isReady else { return }
+        Task { await model.inventory.checkChanges() }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         AppModel.shared.secretClipboard.clearNowIfOwned()
     }
@@ -113,6 +120,8 @@ struct SSHDeskApp: App {
                 Button("Xuất danh sách máy chủ…") { model.exportHosts(.all) }
                     .disabled(!model.isReady || model.hosts.isEmpty)
                 Button("Nhập danh sách máy chủ…") { model.beginImportFile() }
+                    .disabled(!model.isReady)
+                Button("Nguồn máy chủ (Excel/CSV)…") { model.inventory.openHub() }
                     .disabled(!model.isReady)
             }
             // Thao tác trên máy chủ đang chọn (ADR-022). Xoá dùng ⌘⌫ (không dùng ⌫ trần để khỏi tranh phím

@@ -123,6 +123,15 @@ struct SidebarView: View {
             header("THƯ MỤC")
             Spacer()
             Button {
+                model.inventory.openHub()
+            } label: {
+                Image(systemName: "tablecells.badge.ellipsis").font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 22, height: 22).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).padding(.top, 16)
+            .help("Nguồn máy chủ (Excel/CSV)…").accessibilityLabel("Nguồn máy chủ")
+            Button {
                 model.folderDialog = .create
             } label: {
                 Image(systemName: "plus").font(.system(size: 11, weight: .semibold))

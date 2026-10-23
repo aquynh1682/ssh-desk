@@ -49,6 +49,7 @@ struct MainView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            InventoryChangeBanner(inventory: model.inventory)
             HStack(spacing: 0) {
                 SidebarView(model: model)
                 Divider().overlay(Theme.divider)
@@ -75,6 +76,8 @@ struct MainView: View {
                     }
                     Divider()
                     Button("Nhập từ file…") { model.beginImportFile() }
+                    Divider()
+                    Button("Nguồn máy chủ (Excel/CSV)…") { model.inventory.openHub() }
                 } label: {
                     Label("Xuất / nhập danh sách", systemImage: "arrow.up.arrow.down.square")
                 }
@@ -96,6 +99,9 @@ struct MainView: View {
         .sheet(isPresented: $model.showImport) { ImportView(model: model) }
         .sheet(item: $model.assignSetTarget) { target in
             AssignSetSheet(model: model, target: target)
+        }
+        .sheet(isPresented: $model.inventory.showHub) {
+            InventoryHubSheet(model: model, inventory: model.inventory)
         }
         .sheet(item: $model.exchangePreview) { preview in
             HostImportPreviewSheet(model: model, preview: preview)

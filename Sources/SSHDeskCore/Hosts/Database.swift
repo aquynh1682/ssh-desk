@@ -201,6 +201,27 @@ public final class Database: @unchecked Sendable {
             "ALTER TABLE hosts ADD COLUMN autofill_hold_reason TEXT",
             "CREATE INDEX idx_hosts_credential_set ON hosts(credential_set_id)",
         ]),
+        // v10: nguồn máy chủ đồng bộ một chiều (ADR-026). Không có cột secret. Xoá nguồn → host mất liên kết
+        // (ON DELETE SET NULL), không xoá host. `source_missing` = host không còn trong nguồn (không bao giờ tự xoá).
+        Migration(statements: [
+            """
+            CREATE TABLE inventory_sources (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('excel', 'csv', 'json', 'ansible')),
+                path TEXT NOT NULL,
+                folder TEXT NOT NULL DEFAULT '',
+                default_environment TEXT,
+                config_json TEXT NOT NULL DEFAULT '{}',
+                last_synced_at REAL,
+                last_fingerprint TEXT
+            )
+            """,
+            "ALTER TABLE hosts ADD COLUMN source_id TEXT REFERENCES inventory_sources(id) ON DELETE SET NULL",
+            "ALTER TABLE hosts ADD COLUMN external_id TEXT",
+            "ALTER TABLE hosts ADD COLUMN source_missing INTEGER NOT NULL DEFAULT 0",
+            "CREATE INDEX idx_hosts_source ON hosts(source_id)",
+        ]),
     ]
 
     /// Phiên bản schema mà bản app này biết (hiện ở màn Cài đặt).

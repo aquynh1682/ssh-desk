@@ -145,6 +145,8 @@ final class AppModel {
     let sessionPool = SessionPool()
     /// Màn "Project Analyst" (ADR-016).
     @ObservationIgnored lazy var analyst = AnalystModel(app: self)
+    /// Nguồn máy chủ đồng bộ một chiều: Excel/CSV (ADR-026).
+    @ObservationIgnored lazy var inventory = InventoryModel(app: self)
     /// Màn "Monitor" tài nguyên server (ADR-019).
     @ObservationIgnored lazy var monitor = MonitorModel(app: self)
     private(set) var analystRepository: AnalystRunRepository?
@@ -212,6 +214,8 @@ final class AppModel {
             browser = FileBrowserModel(app: self, credentials: autofillCredentials)
             phase = .ready
             drainPendingURLs()
+            // Phát hiện file nguồn đổi (mtime + SHA-256); chỉ báo, không tự áp dụng.
+            Task { await inventory.checkChanges() }
         } catch {
             phase = .failed(
                 DatabaseFailure(
@@ -361,6 +365,7 @@ final class AppModel {
             folders = try await service.repository.folders()
             credentialSets = try await service.repository.credentialSets()
             credentialSetUsage = try await service.repository.credentialSetUsage()
+            await inventory.refreshData()
             forwards = try await forwardRepository?.all() ?? []
             if case .folder(let f) = sidebar, !folders.contains(f) { sidebar = .all }
             browser?.hostsChanged(hosts)
@@ -894,6 +899,10 @@ final class AppModel {
         case HostRepositoryError.folderNameExists: return "Đã có thư mục trùng tên."
         case let e as PortForwardError: return Self.message(for: e)
         case let e as HostExchangeError: return e.description
+        case let e as SpreadsheetError: return e.description
+        case let e as InventoryError: return e.description
+        case let e as InventoryTemplateError: return e.description
+        case let e as ColumnMappingError: return e.description
         case HostRepositoryError.referencedAsJumpHost:
             return "Máy này đang là bastion của máy khác."
         case ConnectionServiceError.missingAlias: return "Hồ sơ thiếu alias SSH."

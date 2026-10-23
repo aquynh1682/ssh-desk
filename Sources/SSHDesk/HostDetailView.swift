@@ -24,6 +24,7 @@ struct HostDetailView: View {
                         ? "Mở kết nối RDP trong Windows App (Return khi đang ở danh sách)"
                         : "Mở phiên SSH trong Warp (Return khi đang ở danh sách)")
                 loginCard
+                HostSourceCard(model: model, host: host)
                 connectionCard
                 if isWindows {
                     Text(

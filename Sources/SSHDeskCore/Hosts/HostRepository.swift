@@ -28,7 +28,7 @@ public actor HostRepository {
         default_remote_directory, created_at, updated_at, last_launch_requested_at, \
         kind, rdp_username, rdp_domain, rdp_gateway, rdp_screen_mode, rdp_multi_monitor, \
         rdp_redirect_clipboard, rdp_admin_session, identity_agent, credential_set_id, \
-        autofill_hold, autofill_hold_reason
+        autofill_hold, autofill_hold_reason, source_id, external_id, source_missing
         """
 
     // MARK: - Đọc
@@ -132,13 +132,13 @@ public actor HostRepository {
     }
 
     /// Host rời thư mục cũ thì thư mục đó vẫn được giữ lại (kể cả khi thành rỗng).
-    private func keepFolder(_ old: String, ifLeftBy new: String) throws {
+    func keepFolder(_ old: String, ifLeftBy new: String) throws {
         guard !old.isEmpty, old != new else { return }
         try db.execute("INSERT OR IGNORE INTO host_folders(name) VALUES (?)", [.text(old)])
     }
 
     /// Thư mục đã có trùng `name` (không phân biệt hoa thường/dấu), bỏ qua đúng tên `excluding`.
-    private func matchingFolder(_ name: String, excluding: String?) throws -> String? {
+    func matchingFolder(_ name: String, excluding: String?) throws -> String? {
         try folders().first { $0 != excluding && HostFolders.sameFolder($0, name) }
     }
 
@@ -182,6 +182,10 @@ public actor HostRepository {
             // Hold chỉ bỏ bằng `confirmAutofillHold` (ADR-026): sửa tay qua form/bản cũ không được xoá hold.
             saved.autofillHold = stored.autofillHold
             saved.autofillHoldReason = stored.autofillHoldReason
+            // Liên kết nguồn chỉ đổi qua đồng bộ / "Tách khỏi nguồn" (ADR-026), không qua form.
+            saved.sourceID = stored.sourceID
+            saved.externalID = stored.externalID
+            saved.sourceMissing = stored.sourceMissing
             saved.updatedAt = now()
             try write(saved, insert: false)
             return saved
@@ -297,12 +301,12 @@ public actor HostRepository {
 
     // MARK: - Nội bộ
 
-    private func fetchExists(_ id: UUID) throws -> Bool {
+    func fetchExists(_ id: UUID) throws -> Bool {
         !(try db.query("SELECT 1 FROM hosts WHERE id = ?", [.text(id.uuidString)])).isEmpty
     }
 
     /// Jump host phải tồn tại và chuỗi bastion không quay lại chính host.
-    private func checkJump(_ host: HostProfile) throws {
+    func checkJump(_ host: HostProfile) throws {
         guard var current = host.jumpHostID else { return }
         var path = [host.id]
         while true {
@@ -318,7 +322,7 @@ public actor HostRepository {
         }
     }
 
-    private func write(_ h: HostProfile, insert: Bool) throws {
+    func write(_ h: HostProfile, insert: Bool) throws {
         let tags = try Self.json(h.tags)
         let marks = try Self.json(h.remoteBookmarks)
         func opt(_ s: String?) -> SQLValue { s.map { .text($0) } ?? .null }
@@ -335,7 +339,8 @@ public actor HostRepository {
             .text(h.rdpScreenMode.rawValue), .int(h.rdpMultiMonitor ? 1 : 0),
             .int(h.rdpRedirectClipboard ? 1 : 0), .int(h.rdpAdminSession ? 1 : 0),
             opt(h.identityAgent), opt(h.credentialSetID?.uuidString), .int(h.autofillHold ? 1 : 0),
-            opt(h.autofillHoldReason),
+            opt(h.autofillHoldReason), opt(h.sourceID?.uuidString), opt(h.externalID),
+            .int(h.sourceMissing ? 1 : 0),
         ]
         if insert {
             let marks = Array(repeating: "?", count: values.count + 1).joined(separator: ", ")
@@ -374,7 +379,7 @@ public actor HostRepository {
             default: throw bad("cột \(i)")
             }
         }
-        guard row.count == 35, let id = UUID(uuidString: try text(0)),
+        guard row.count == 38, let id = UUID(uuidString: try text(0)),
             let env = HostEnvironment(rawValue: try text(3)),
             let mode = HostConnectionMode(rawValue: try text(7)),
             let auth = HostAuthMethod(rawValue: try text(11)),
@@ -398,7 +403,9 @@ public actor HostRepository {
             jumpHostID: optText(13).flatMap(UUID.init(uuidString:)),
             sshConfigPath: optText(14), sshConfigAlias: optText(15),
             credentialReference: optText(16), credentialSetID: optText(32).flatMap(UUID.init(uuidString:)),
-            autofillHold: try int(33) != 0, autofillHoldReason: optText(34), remoteBookmarks: marks,
+            autofillHold: try int(33) != 0, autofillHoldReason: optText(34),
+            sourceID: optText(35).flatMap(UUID.init(uuidString:)), externalID: optText(36),
+            sourceMissing: try int(37) != 0, remoteBookmarks: marks,
             defaultLocalDirectory: try text(18), defaultRemoteDirectory: try text(19),
             createdAt: try date(20), updatedAt: try date(21), lastLaunchRequestedAt: launch)
     }

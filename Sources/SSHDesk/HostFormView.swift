@@ -28,6 +28,9 @@ struct HostFormView: View {
     private var isNew: Bool { base == nil || isDuplicate }
     private var isWindows: Bool { draft.kind == .windowsRDP }
     private var isImported: Bool { base?.connectionMode == .existingSSHConfigAlias }
+    /// Máy đồng bộ từ nguồn (ADR-026): tên, địa chỉ, port, user, môi trường, thư mục, jump host chỉ đọc.
+    private var sourceManaged: Bool { base?.sourceID != nil && !isDuplicate }
+    private var notesManaged: Bool { sourceManaged && base.map { model.inventory.managesNotes($0) } == true }
     private var errors: [HostDraft.Field: String] {
         draft.errors(
             basedOn: base, hasSavedPassword: hasSavedPassword,
@@ -54,22 +57,40 @@ struct HostFormView: View {
                         .foregroundStyle(.secondary)
                     }
                 }
+                if sourceManaged, let b = base {
+                    Section {
+                        Label(
+                            "Máy này đồng bộ từ nguồn “\(model.inventory.sourceName(for: b) ?? "?")”: tên, IP, port, user, môi trường, thư mục, jump host\(notesManaged ? ", ghi chú" : "") do nguồn quản lý nên chỉ đọc. Sửa trong file nguồn rồi đồng bộ lại, hoặc tách khỏi nguồn.",
+                            systemImage: "link"
+                        )
+                        .foregroundStyle(.secondary)
+                        Button("Tách khỏi nguồn") {
+                            Task {
+                                await model.inventory.detach(b)
+                                dismiss()
+                            }
+                        }
+                    }
+                }
                 Section("Thông tin chính") {
-                    if !isImported { kindPicker }
+                    if !isImported { kindPicker.disabled(sourceManaged) }
                     field("Tên", .displayName) {
                         TextField(
                             "Tên", text: $draft.displayName,
                             prompt: Text(isWindows ? "Windows server" : "Web production")
                         )
                         .focused($nameFocused)
+                        .disabled(sourceManaged)
                     }
                     if isWindows {
                         field("Host", .hostName) {
                             TextField("Host", text: $draft.hostName, prompt: Text("192.168.1.10"))
+                                .disabled(sourceManaged)
                         }
-                        field("Port", .port) { TextField("Port", text: $draft.portText) }
+                        field("Port", .port) { TextField("Port", text: $draft.portText).disabled(sourceManaged) }
                         field("User", .rdpUser) {
                             TextField("User", text: $draft.rdpUsername, prompt: Text("DOMAIN\\user"))
+                                .disabled(sourceManaged)
                         }
                     } else if !isImported {
                         LabeledContent("Kiểu kết nối") {
@@ -77,11 +98,13 @@ struct HostFormView: View {
                         }
                         field("Host", .hostName) {
                             TextField("Host", text: $draft.hostName, prompt: Text("server.example.com"))
+                                .disabled(sourceManaged)
                         }
                         field("User", .user) {
                             TextField("User", text: $draft.user, prompt: Text("deploy"))
+                                .disabled(sourceManaged)
                         }
-                        field("Port", .port) { TextField("Port", text: $draft.portText) }
+                        field("Port", .port) { TextField("Port", text: $draft.portText).disabled(sourceManaged) }
                     }
                     authSection
                 }
@@ -112,15 +135,18 @@ struct HostFormView: View {
                                         Text(h.displayName).tag(UUID?.some(h.id))
                                     }
                                 }
+                                .disabled(sourceManaged)
                             }
                         }
                         if !isImported && !isWindows { agentField }
-                        folderField
+                        folderField.disabled(sourceManaged)
                         Picker("Môi trường", selection: $draft.environment) {
                             ForEach(HostEnvironment.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                         }
+                        .disabled(sourceManaged)
                         TextField("Tags (cách nhau bằng dấu phẩy)", text: $draft.tagsText)
                         TextField("Ghi chú", text: $draft.notes, axis: .vertical).lineLimit(2...5)
+                            .disabled(notesManaged)
                         if !isWindows { bookmarks }
                     }
                 }

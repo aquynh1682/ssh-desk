@@ -26,7 +26,8 @@ import Testing
             ["list", "--folder", "a", "--folder", "b"], ["list", "--password", "x"],
             ["open"], ["open", "a", "b"], ["open", "-o"], ["open", "--", "x"], ["open", ""],
             ["open", "a\u{1b}[31m"], ["open", String(repeating: "a", count: 257)],
-            ["open", "a", "--", "rm"], ["template", "/tmp/x"], ["--password=x"],
+            ["open", "a", "--", "rm"], ["template"], ["template", "a", "b"], ["template", "-x.xlsx"],
+            ["template", "/tmp/x.txt"], ["--password=x"],
             ["list", "--folder", "x\nrm"],
         ]
         for argv in bad {

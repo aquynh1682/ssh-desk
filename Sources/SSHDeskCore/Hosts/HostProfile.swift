@@ -114,6 +114,12 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
     public var autofillHold: Bool
     /// Lý do hold (chỉ giá trị cũ → mới hoặc tên bộ đăng nhập, không secret).
     public var autofillHoldReason: String?
+    /// Nguồn đồng bộ (ADR-026): các trường do nguồn quản lý chỉ đọc trong form. nil = tạo tay.
+    public var sourceID: UUID?
+    /// Khoá của host trong nguồn (vd cột Tên). Chỉ có nghĩa khi `sourceID != nil`.
+    public var externalID: String?
+    /// Host không còn trong lần đồng bộ gần nhất (không bao giờ tự xoá).
+    public var sourceMissing: Bool
     public var remoteBookmarks: [RemoteBookmark]
     public var defaultLocalDirectory: String
     public var defaultRemoteDirectory: String
@@ -151,6 +157,9 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         credentialSetID: UUID? = nil,
         autofillHold: Bool = false,
         autofillHoldReason: String? = nil,
+        sourceID: UUID? = nil,
+        externalID: String? = nil,
+        sourceMissing: Bool = false,
         remoteBookmarks: [RemoteBookmark] = [],
         defaultLocalDirectory: String = "",
         defaultRemoteDirectory: String = "",
@@ -187,6 +196,9 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         self.credentialSetID = credentialSetID
         self.autofillHold = autofillHold
         self.autofillHoldReason = autofillHoldReason
+        self.sourceID = sourceID
+        self.externalID = externalID
+        self.sourceMissing = sourceMissing
         self.remoteBookmarks = remoteBookmarks
         self.defaultLocalDirectory = defaultLocalDirectory
         self.defaultRemoteDirectory = defaultRemoteDirectory
@@ -206,6 +218,10 @@ public struct HostProfile: Codable, Sendable, Identifiable, Equatable {
         copy.isFavorite = false
         copy.lastLaunchRequestedAt = nil
         copy.credentialReference = nil
+        // Bản sao là máy tạo tay: không thuộc nguồn (tránh hai host cùng khoá trong một nguồn).
+        copy.sourceID = nil
+        copy.externalID = nil
+        copy.sourceMissing = false
         copy.createdAt = now
         copy.updatedAt = now
         return copy

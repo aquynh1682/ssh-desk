@@ -227,6 +227,7 @@ struct HostListView: View {
             HStack(spacing: 10) {
                 ServerGlyph(highlighted: selected, windows: host.kind == .windowsRDP)
                 Text(host.displayName).font(.system(size: 14.5)).lineLimit(1)
+                SourceBadge(host: host, sourceName: model.inventory.sourceName(for: host))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(HostPresentation.addressText(host))

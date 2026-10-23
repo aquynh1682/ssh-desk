@@ -504,6 +504,25 @@ public actor ConnectionService {
         try await regenerateSSHConfig()
     }
 
+    // MARK: - Nguồn máy chủ (ADR-026)
+
+    /// Áp dụng kế hoạch đồng bộ (một transaction) rồi sinh lại SSH config của app.
+    public func applyInventory(_ plan: InventorySyncPlan) async throws {
+        try await repository.applyInventory(plan)
+        try await regenerateSSHConfig()
+    }
+
+    /// Xoá nguồn (gỡ liên kết khỏi host, không xoá host). SSH config không đổi.
+    @discardableResult
+    public func deleteInventorySource(id: UUID) async throws -> Int {
+        try await repository.deleteInventorySource(id: id)
+    }
+
+    /// "Tách khỏi nguồn".
+    public func detachFromSource(hostID: UUID) async throws {
+        try await repository.detachFromSource(hostID: hostID)
+    }
+
     // MARK: - Import
 
     public func importAliases(_ candidates: [ImportCandidate], sourcePath: String) async throws

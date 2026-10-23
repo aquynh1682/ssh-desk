@@ -1,4 +1,4 @@
-.PHONY: build test lint format check run app install
+.PHONY: build test lint format check run app install template
 
 # Máy chỉ có Command Line Tools (không có Xcode.app): SwiftPM không tự nạp macro plugin
 # của Swift Testing, nên phải trỏ thủ công. Có Xcode đầy đủ thì biến này vô hại.
@@ -42,3 +42,13 @@ install: app
 	@if [ -e "$(INSTALL_APP)" ]; then rm -r "$(INSTALL_APP)"; fi
 	ditto "build/SSH Desk.app" "$(INSTALL_APP)"
 	@echo "Đã cài $(INSTALL_APP)"
+
+# Sinh lại file Excel mẫu trong repo (ADR-026). Đường dẫn cố định, không nhận input người dùng; xoá đúng file đó trước
+# vì `sshdesk-cli template` không bao giờ ghi đè.
+TEMPLATE_PATH := docs/templates/sshdesk-hosts-template.xlsx
+TEMPLATE_TMP := build/sshdesk-template-tmp.xlsx
+template:
+	@mkdir -p docs/templates build
+	@rm -f -- "$(TEMPLATE_TMP)"
+	swift run sshdesk-cli template "$(TEMPLATE_TMP)"
+	@mv -f -- "$(TEMPLATE_TMP)" "$(TEMPLATE_PATH)"
