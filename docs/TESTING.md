@@ -90,3 +90,15 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 5. **CSV có `;`:** file CSV UTF-8 dùng `;` (xuất từ Excel Việt) và một file có BOM: nhập đúng cột, tiếng Việt không vỡ dấu.
 6. **Tách và xoá nguồn:** "Tách khỏi nguồn" ở một máy: máy thành máy tạo tay, sửa được, đồng bộ sau không đụng tới. Xoá nguồn: mọi máy vẫn còn.
 7. **Từ chối an toàn:** đổi đuôi `.xls`/`.xlsm` hoặc file không phải zip: báo lỗi rõ, không crash.
+
+**K4c — Hỏi mật khẩu lần đầu (ADR-029).** Cần `make install`, server thật (Linux, đăng nhập bằng mật khẩu) có thể thử. Mới chạy với ssh giả; ghi lại kết quả. Máy phải chưa lưu mật khẩu, không bastion, không imported alias, tự điền bật.
+1. **Host key mới:** máy chưa từng kết nối (xoá dòng cũ khỏi known_hosts của bạn nếu cần), Mở -> sheet -> nhập mật khẩu, tích lưu: app báo "Chưa xác nhận host key", không lưu, không tự yes. Dùng "Bỏ qua, nhập trong terminal", gõ yes ở Warp, rồi thử lại.
+2. **Mật khẩu đúng:** tích lưu -> lưu, mở Warp tự điền; mở lại không hỏi nữa. **Mật khẩu sai:** báo "Sai mật khẩu", nhập lại được, không có mục lưu mới (chi tiết máy vẫn "chưa lưu").
+3. **Mất mạng:** ngắt mạng khi bấm Tiếp tục: sau tối đa 20 giây hỏi "Không kiểm tra được. Vẫn lưu?", nút mặc định là Không.
+4. **Bộ đăng nhập:** chọn "Dùng bộ có sẵn" với bộ đúng: máy được gán bộ, không phải nhập lại. Bộ có mật khẩu sai với máy này: báo "Mật khẩu của bộ không đúng với máy này", mật khẩu bộ không đổi; nhập mật khẩu mới + xác nhận "Cập nhật mật khẩu của bộ (ảnh hưởng N máy)" thì các máy khác dùng bộ nhận mật khẩu mới. "Lưu thành bộ mới": bộ xuất hiện trong Cài đặt → Bảo mật và máy được gán.
+5. **OTP/MFA:** máy có prompt thứ hai: báo mở terminal lần đầu, không lưu.
+6. **Không tích lưu:** Warp -> terminal vẫn hỏi, gõ tay được, Keychain không có mục mới. Monitor/Analyst nhiều máy chưa lưu: hỏi lần lượt từng máy, Huỷ = bỏ qua máy đó; chạy xong khi đóng phiên thì hỏi lại từ đầu.
+7. **Truyền file:** sheet "Tải về/Tải lên" cho máy chưa lưu hỏi mật khẩu; sheet lồng sheet nhập mật khẩu: Esc/Huỷ đóng đúng lớp, không kẹt hay mất job. Job từ tab Duyệt file dùng master của tab (không hỏi lại).
+8. **Windows:** máy Windows chưa có mật khẩu -> Mở: sheet có ô "Lưu vào Keychain"; không tích thì dán được một lần (⌘V), clipboard tự xoá, không có mục Keychain mới.
+9. **Mật khẩu tạm biến mất:** nhập không tích lưu cho Monitor, đóng Monitor, mở lại: phải hỏi lại. Đổi IP/Port/User của máy khi đang có mật khẩu tạm: hỏi lại.
+10. **Cài đặt:** tắt "Hỏi mật khẩu khi máy chưa lưu" -> không còn sheet, quay luồng terminal hỏi. Máy PROD: xác nhận PROD trước sheet.

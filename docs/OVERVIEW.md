@@ -21,7 +21,7 @@ Thư mục trong `SSHDeskCore/`:
 - `SSHConfig/` — `SSHConfigWriter` (sinh config riêng). `SSHImport/` — đọc alias từ `~/.ssh/config`.
 - `Warp/` — `WarpTabConfigRenderer`, `WarpLauncher`, `ZshQuoting`.
 - `Process/` — `PTYProcess`, `PromptDetector`, `ScpProgressParser`, `OutputSanitizer`.
-- `Credentials/` — protocol `CredentialStore`, `AutofillGatedCredentialStore` (chặn khi hold/tắt tự điền), `CredentialResolution`, `PasswordAutofillPolicy`.
+- `Credentials/` — protocol `CredentialStore`, `AutofillGatedCredentialStore` (chặn khi hold/tắt tự điền), `CredentialResolution`, `PasswordAutofillPolicy`; ADR-029: `MissingPasswordPrompt` (quyết định có hỏi hay không, thuần, test bảng), `PasswordVerifier` (thử đăng nhập qua PTY, mở master rồi luôn đóng; kết quả đúng/sai/`hostKeyUnconfirmed`/`hostKeyChanged`/prompt khác/lỗi mạng), `PasswordEntryService` (điều phối sheet: kiểm tra, lưu host hoặc bộ), `EphemeralPasswordVault` (kho tạm trong bộ nhớ, gắn owner + `user@host:port` lúc nhập, đổi địa chỉ thì bỏ; bọc theo thứ tự cổng tự điền -> vault -> Secure Enclave; ref tạm `verify-`/`ephemeral-` bị `validate` chặn ghi DB).
 - `Transfer/` — `TransferManager`, `ScpCommandBuilder`, `TransferRepository`, state machine job.
 - `Remote/` — `RemoteSession` (master), `SessionPool`, `SessionConnector`, `RemoteFileService`, `SftpBatch`, `SftpListingParser`, `LocalFileService`.
 - `Browser/` — logic thuần của màn Truyền file (tab, đường dẫn, kế hoạch truyền).
@@ -115,5 +115,6 @@ Chi tiết trong [architecture.md](architecture.md).
 | 023 | Ký app bằng chứng chỉ ổn định | `SSHDESK_SIGN_IDENTITY`, identifier cố định, fallback ad-hoc. |
 | 024 | Agent ngoài qua `IdentityAgent` | Cột `identity_agent`, preset 1Password/Bitwarden/Secretive, validator, liệt kê key agent. |
 | 025 | CLI `sshdesk` + URL scheme | DB chỉ đọc, file request 0600 hết hạn 30 giây, URL ngoài luôn xác nhận. |
+| 029 | Hỏi mật khẩu lần đầu + "Lưu vào Keychain" | Sheet khi máy chưa có mật khẩu; kiểm tra đăng nhập trước khi lưu (không `StrictHostKeyChecking=no`, không tự yes host key); không tích lưu thì giữ trong bộ nhớ theo phiên (Warp thì gõ trong terminal); lưu vào máy/bộ có sẵn/bộ mới (cùng ADR-030). |
 | 030 | Bộ đăng nhập dùng chung | `credential_sets`, `CredentialResolution` (host > bộ > Cài đặt), passphrase chỉ qua askpass, hold khi gán từ file. |
 | 026 | Nguồn máy chủ đồng bộ một chiều | Excel/CSV (file mẫu + ghép cột) đã làm; JSON/Ansible đang làm. Luôn xem trước, một transaction, không tự xoá, hold khi địa chỉ đổi. |

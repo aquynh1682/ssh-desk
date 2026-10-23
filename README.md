@@ -77,6 +77,15 @@ File Excel/CSV không theo mẫu: chọn sheet và dòng tiêu đề, rồi ghé
 - **Cài đặt (đang hoàn thiện):** ⌘, hoặc mục "Cài đặt" ở sidebar — mặc định Warp, truyền file, SSH config, bảo mật, Analyst, Monitor, Windows App, dữ liệu.
 - **Vòng đời app, phím tắt (đang hoàn thiện):** hỏi xác nhận khi thoát lúc còn job/tunnel/Monitor/Analyst; ⌘N, ⌘F, ⌘D, ⌘Return, ⌘E, ⌘1…⌘6.
 
+### Nhập mật khẩu lần đầu (ADR-029)
+Mở máy SSH dùng mật khẩu mà chưa lưu thì app hiện sheet "Nhập mật khẩu cho user@host" thay vì để terminal hỏi.
+- **Khi nào hiện:** máy SSH, đăng nhập bằng mật khẩu, chưa lưu mật khẩu (kể cả bộ đăng nhập). **Không hiện** khi: máy đi qua bastion; đang bị tạm tắt tự điền; máy alias import từ `~/.ssh/config`; hoặc tắt "Tự điền mật khẩu đã lưu" / tắt Cài đặt → Bảo mật → "Hỏi mật khẩu khi máy chưa lưu" (mặc định bật). Khi đó vẫn là luồng cũ (hỏi trong terminal). Máy PROD xác nhận PROD trước.
+- **Ô "Lưu vào Keychain" (mặc định bật), 3 cách lưu:** chỉ cho máy này; dùng bộ đăng nhập có sẵn (chỉ liệt kê bộ đã có mật khẩu); lưu thành bộ mới (đặt tên).
+- **Kiểm tra đăng nhập trước khi lưu** (mở thêm một kết nối ngắn, tối đa 20 giây): đúng thì lưu rồi mở Warp tự điền; sai thì báo "Sai mật khẩu", cho nhập lại, không lưu; host key chưa xác nhận (máy mới/đổi key) hoặc có OTP/MFA thì không kiểm tra được, báo mở terminal lần đầu ("Bỏ qua, nhập trong terminal"), app không tự trả lời yes; lỗi mạng/timeout hỏi "Vẫn lưu?" (mặc định Không). Chọn bộ có sẵn mà mật khẩu bộ sai với máy này thì không ghi đè mật khẩu bộ, trừ khi bạn nhập mật khẩu mới và xác nhận "Cập nhật mật khẩu của bộ (ảnh hưởng N máy)".
+- **Không tích lưu:** mở Warp thì app không giữ mật khẩu, bạn gõ trong terminal. Analyst, Monitor, Truyền file (sheet Tải về/Tải lên) giữ mật khẩu trong bộ nhớ app tới khi đóng phiên, không ghi ra đâu; đổi địa chỉ máy thì bỏ mục tạm.
+- **Máy Windows:** sheet có ô "Lưu vào Keychain"; không kiểm tra được; mật khẩu copy lên clipboard như mục Windows (không tích thì copy một lần, không lưu).
+- Mới có test đơn vị và ssh giả, **chưa thử với server thật** (xem [TESTING](docs/TESTING.md) K4c).
+
 ### Trạng thái kiểm chứng
 Tất cả logic có test tự động. Nhưng nhiều tính năng mới chỉ chạy với sshd tạm ở `127.0.0.1` và **chưa được thử tay với server thật** (đánh dấu `[~]` trong [plan.md](plan.md)):
 
@@ -89,6 +98,7 @@ Tất cả logic có test tự động. Nhưng nhiều tính năng mới chỉ c
 | Truyền file, auth prompt (C3/C4, F2) | Chỉ sshd tạm | Server thật: password, MFA, host key |
 | Password Keychain + askpass (E2) | Chỉ test đơn vị | Server có password; ACL Keychain khi chạy từ `.app` |
 | Bộ đăng nhập (K4s), kho Secure Enclave + migration (K4e) | Chỉ test đơn vị | Thử tay trên `.app` đã cài (TESTING mục K4s/K4e) |
+| Hỏi mật khẩu lần đầu (K4c) | Chỉ test đơn vị + ssh giả | Server thật (TESTING mục K4c) |
 | SSH Keys (E1), Port forward (E3) | Chỉ sshd tạm | Server thật |
 | Monitor (I1/I2) | Chưa | Server Linux thật, giao diện |
 | Xuất/nhập (D1) | Chỉ test | Thử tay |

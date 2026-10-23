@@ -104,6 +104,14 @@ Gom từ mục "Rủi ro chấp nhận" và "Chưa kiểm chứng" trong [archit
 - **Gán bộ chỉ theo thư mục:** bảng máy chủ chưa chọn nhiều dòng; gán cho vài host riêng lẻ thì dùng form từng host.
 - **ADR:** 004b, 004c, 030.
 
+### A18. Hỏi mật khẩu lần đầu (ADR-029)
+- **Kiểm tra mở thêm một kết nối:** trước khi lưu, app đăng nhập thử (mở rồi đóng master). Server giới hạn số lần thử/đăng nhập hoặc có fail2ban sẽ thấy thêm một lần đăng nhập; mật khẩu sai là một lần thất bại.
+- **Máy imported alias không hỏi:** app không biết user@host thật của alias trong `~/.ssh/config`, nên không hiện sheet; mật khẩu nhập trong terminal như cũ.
+- **Mật khẩu tạm nằm trong bộ nhớ app trong thời gian phiên** (String Swift không xoá chủ động được), giống luồng PTY hiện có. Không ghi file/log/DB/Keychain khi không tích lưu; bỏ khi đóng phiên hoặc đổi địa chỉ máy.
+- **Warp không nhận mật khẩu tạm:** không tích lưu thì Warp luôn để bạn gõ trong terminal (không đi qua env/argv/Tab Config).
+- **Nút "Mở Warp" trong UI không hỏi xác nhận PROD** (chỉ URL scheme/CLI có); hành vi cũ, không đổi bởi ADR-029. Với PROD, sheet mật khẩu vẫn xác nhận PROD trước.
+- **ADR:** 029.
+
 ## B. Chưa kiểm chứng (với hệ thống thật)
 
 ### B1. Truyền file với server thật
@@ -150,3 +158,7 @@ Chỉ có test đơn vị (đọc XLSX kiểm chứng bằng `unzip`/`zip` của
 - **Chưa quyết:** có cho lưu mật khẩu từ cột mật khẩu vào Keychain không (hiện luôn bỏ qua).
 - Giới hạn cứng: file nén ≤ 20 MB, ≤ 5000 dòng, ≤ 200 cột; CSV ≤ 5 MB.
 - **ADR:** 026, 030.
+
+### B13. Hỏi mật khẩu lần đầu (ADR-029)
+Chỉ có test đơn vị và ssh giả; **chưa thử với server thật**: host key mới, mật khẩu đúng/sai, mất mạng, bộ sai + cập nhật bộ, OTP, Monitor/Analyst nhiều máy, sheet lồng Tải về/Tải lên + Esc, Windows. Kịch bản: TESTING mục K4c.
+- **ADR:** 029, 030.
