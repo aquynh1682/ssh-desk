@@ -13,7 +13,7 @@ Swift 6, SwiftUI (+ AppKit khi cần), SwiftPM, SQLite hệ thống (`import SQL
 | `AskpassKit` | Logic phân loại prompt dùng chung cho helper askpass (có bảng test). |
 | `CredentialBackend` | Backend secret dùng chung cho `SSHDeskCore` và `sshdesk-askpass` (ADR-004b/004c). Mọi `SecItem*`/`kSecClass` chỉ nằm ở đây: Secure Enclave + ECIES, `status(ref:)` trả missing/present/undecryptable. |
 | `sshdesk-askpass` | Executable helper trong bundle: đọc secret qua `CredentialBackend` theo tham chiếu, in password/passphrase cho `ssh`. |
-| `sshdesk-cli` | CLI `sshdesk` (list/open/help), chỉ đọc DB, nhờ app mở host qua `sshdesk://`. |
+| `sshdesk-cli` | CLI `sshdesk` (list/open/help), chỉ đọc DB, nhờ app mở host qua `sshdesk://`; thêm lệnh `template <đường dẫn>` sinh file Excel mẫu (`make template`, chỉ ghi file mới). |
 | `sshdesk-ctty` | Executable helper gán controlling tty rồi `execv` (posix_spawn trên macOS không tự cấp). |
 
 Thư mục trong `SSHDeskCore/`:
@@ -27,6 +27,7 @@ Thư mục trong `SSHDeskCore/`:
 - `Browser/` — logic thuần của màn Truyền file (tab, đường dẫn, kế hoạch truyền).
 - `Keys/` — kiểm kê, tạo, cài SSH key. `Tunnel/` — `TunnelManager`, `PortForward`.
 - `Analyst/`, `Monitor/` — lệnh whitelist, parser, coordinator. `Windows/` — `.rdp`, Windows App, clipboard bí mật.
+- `Inventory/` — nguồn máy chủ đồng bộ một chiều (ADR-026): `BoundedProcess`, `XLSXReader`, `CSVReader`, `ColumnMapping`, `InventoryTableParser`, `InventorySync` (dựng kế hoạch), `InventoryRepository` (áp dụng), `InventoryTemplate` (sinh file mẫu), `InventoryFile`.
 - `Exchange/` — xuất/nhập JSON. `Settings/` — `AppSettings`, `SettingsRepository` (đang hoàn thiện). `App/` — `AppPaths`, `ConnectionService`, `HostDraft`, `QuitActivity` (đang hoàn thiện).
 
 ## Luồng chính
@@ -41,6 +42,12 @@ Thư mục trong `SSHDeskCore/`:
 **Bộ đăng nhập (ADR-030).** `CredentialResolution.resolve(host:set:settings:)` (thuần, có test) là nơi duy nhất quyết định user, identityFile, identityAgent, passwordRef, passphraseRef: **giá trị riêng của host > bộ > mặc định Cài đặt** (Cài đặt chỉ áp cho IdentityAgent). `SSHConfigWriter`, ConnectionService, PTY/askpass, Truyền file, Tunnel... đều lấy từ đây. Passphrase của bộ chỉ tự điền qua askpass (Warp), khi prompt bắt đầu đúng `Enter passphrase for key '` và path khớp identityFile của bộ; PTY không tự điền passphrase. Xoá bộ thì gỡ khỏi host (không xoá host).
 
 **Hold tự điền (ADR-030/026).** Cột `autofill_hold` + `autofill_hold_reason` (chỉ chứa tên bộ hoặc giá trị địa chỉ cũ -> mới, không secret). Gán bộ từ nhập file đặt hold; `HostProfile.autofillCredentialReference` trả nil khi hold; `AutofillGatedCredentialStore` chặn ở nơi gọi. Người dùng bấm "Xác nhận" ở chi tiết máy để gỡ.
+
+**Nguồn máy chủ Excel/CSV (ADR-026).** Hub "Nguồn máy chủ" (UI) gọi `InventoryFile` -> bảng thô -> `InventoryTableParser` (file đúng mẫu `sshdesk-template v1` hoặc đúng bộ tiêu đề thì bỏ qua ghép cột; ngược lại dùng `ColumnMapping` lưu theo nguồn) -> `InventorySync` dựng kế hoạch (thêm / đổi / không còn trong nguồn / lỗi theo dòng) -> người dùng xem trước và bấm Áp dụng -> `InventoryRepository` ghi trong **một transaction** cùng actor với host (lỗi thì không ghi gì), rồi sinh lại SSH config. Không bao giờ tự xoá host (chỉ `source_missing`). Phát hiện file đổi bằng fingerprint `sha256|mtime|size` khi mở/kích hoạt app, chỉ hiện banner. Trường do nguồn quản lý bị khoá ở form (Core không chặn; "Tách khỏi nguồn" gỡ `source_id`).
+- **Đọc XLSX an toàn, không dependency:** copy file vào thư mục tạm 0700 với tên cố định `in.xlsx` (vì `unzip` coi đường dẫn file là wildcard) -> `unzip -Z1` liệt kê tên, từ chối tên trùng / `..` / tuyệt đối -> `/usr/bin/unzip -p` qua executable + argv, **env rỗng**, stdout qua pipe, tên entry chỉ trong danh sách cố định hoặc `^xl/worksheets/[A-Za-z0-9_]+\.xml$` -> `BoundedProcess` cap theo byte thực (20 MB file nén, 50 MB mỗi entry, 100 MB tổng, timeout 15 giây; vượt thì kill) -> exit khác 0 thì bỏ toàn bộ dữ liệu -> quét byte, từ chối nếu có `<!DOCTYPE`/`<!ENTITY` rồi mới parse bằng `XMLParser` (không resolve entity ngoài). Công thức không tính (lấy giá trị cache `<v>`). Chỉ nhận `.xlsx`. Tối đa 5000 dòng, 200 cột.
+- **Cột bí mật:** tiêu đề giống password/token/credential... bị xoá giá trị ngay trong bước dựng bảng, không ghép được, không vào preview/log.
+- **Hold:** gán bộ đăng nhập từ file, hoặc đổi HostName/Port/User/jump của máy có sẵn qua đồng bộ, đặt `autofill_hold` (lý do nối thêm, tối đa 500 ký tự) tới khi người dùng "Xác nhận".
+- **File mẫu:** Core sinh XML, nén bằng `/usr/bin/zip -X -D -r` (argv, cwd = thư mục tạm); có test round-trip qua chính reader.
 
 **Warp Tab Config (ADR-007).** Ghi `~/.warp/tab_configs/sshdesk_<uuid>.toml` (một pane, `commands` = lệnh ssh đã quote cho zsh), mở bằng `warp://tab_config/sshdesk_<uuid>`. App chỉ biết "đã yêu cầu mở"; lỗi thì Copy lệnh.
 
@@ -74,6 +81,7 @@ Thư mục trong `SSHDeskCore/`:
 | v7 | `settings(key, value)` — đang hoàn thiện | 021 |
 | v8 | `hosts.identity_agent` | 024 |
 | v9 | `credential_sets`; `hosts.credential_set_id`, `autofill_hold`, `autofill_hold_reason` (cột nguồn đồng bộ ADR-026 thêm sau) | 030 |
+| v10 | `inventory_sources`; `hosts.source_id`, `external_id`, `source_missing` (nguồn máy chủ đồng bộ một chiều) | 026 |
 
 ## Danh sách ADR
 Chi tiết trong [architecture.md](architecture.md).
@@ -108,3 +116,4 @@ Chi tiết trong [architecture.md](architecture.md).
 | 024 | Agent ngoài qua `IdentityAgent` | Cột `identity_agent`, preset 1Password/Bitwarden/Secretive, validator, liệt kê key agent. |
 | 025 | CLI `sshdesk` + URL scheme | DB chỉ đọc, file request 0600 hết hạn 30 giây, URL ngoài luôn xác nhận. |
 | 030 | Bộ đăng nhập dùng chung | `credential_sets`, `CredentialResolution` (host > bộ > Cài đặt), passphrase chỉ qua askpass, hold khi gán từ file. |
+| 026 | Nguồn máy chủ đồng bộ một chiều | Excel/CSV (file mẫu + ghép cột) đã làm; JSON/Ansible đang làm. Luôn xem trước, một transaction, không tự xoá, hold khi địa chỉ đổi. |

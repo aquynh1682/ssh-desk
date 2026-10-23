@@ -81,3 +81,12 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 3. Thoát app, xoá item `local.sshdesk.sekey`, mở lại: host có mật khẩu lưu hiện "Mật khẩu đã lưu không còn dùng được trên máy này", không tự điền, không crash; nhập lại thì dùng được.
 4. Askpass dưới Warp (ký bằng chứng chỉ, ADR-023): không hiện hộp thoại Keychain; build + cài lại cũng không hỏi lại.
 5. "Xoá mọi mật khẩu đã lưu" (có xác nhận): item `sealed` bị xoá, khoá `sekey` còn lại.
+
+**K4a — Nguồn máy chủ Excel/CSV (ADR-026).** Cần `make install`. Dùng dữ liệu giả (`192.0.2.x`, `example.com`), không cần server thật. Chưa ai chạy mục này; ghi lại kết quả.
+1. **File mẫu:** hub "Nguồn máy chủ" (nút ở header THƯ MỤC, menu Tệp, menu Xuất/nhập) -> "Tải file mẫu…" -> lưu. Mở bằng **Excel và Numbers**: có 2 sheet ("Máy chủ", "Hướng dẫn"); cột Môi trường và Loại có dropdown; cột Port từ chối giá trị ngoài 1–65535; tiêu đề đậm, cột đủ rộng. Ghi lại chỗ nào hiển thị sai hoặc báo file hỏng. Lệnh `make template` tạo lại bản trong `docs/templates/` (không ghi đè).
+2. **Nhập file đúng mẫu:** điền 3–5 dòng, trong đó 1 dòng lỗi (vd Port 70000 hoặc thiếu IP), một dòng có Jump host trỏ tên máy khác trong file. Lưu, "Thêm nguồn": vào thẳng xem trước (không hỏi ghép cột). Lỗi hiện theo dòng (số dòng, cột, lý do); dòng lỗi bị bỏ qua; các dòng còn lại áp dụng được. Sau Áp dụng: máy có trong thư mục, form khoá các trường do nguồn quản lý.
+3. **Đổi trong file:** sửa IP một máy, lưu file, quay lại app (kích hoạt app): banner "Nguồn có thay đổi" -> Xem trước (IP cũ -> mới) -> Áp dụng. Máy đó bị tạm tắt tự điền mật khẩu (chi tiết máy ghi lý do; mở Warp báo cần xác nhận) -> bấm "Xác nhận" -> tự điền lại. Xoá một dòng khỏi file rồi đồng bộ: máy hiện "Không còn trong nguồn", không bị xoá.
+4. **File khách + cột mật khẩu:** file Excel tự làm có cột "Mật khẩu" hoặc "Password" (và thử "Token"): app báo "sẽ bỏ qua", cột đó không chọn được ở bất kỳ ô ghép nào, giá trị không hiện trong xem trước. Tiêu đề lạ: chọn sheet/dòng tiêu đề, app đoán cột VN/EN, ghép tay phần còn lại. "Đồng bộ lại" và "Chọn file mới…" không hỏi ghép cột lần hai nếu tiêu đề không đổi.
+5. **CSV có `;`:** file CSV UTF-8 dùng `;` (xuất từ Excel Việt) và một file có BOM: nhập đúng cột, tiếng Việt không vỡ dấu.
+6. **Tách và xoá nguồn:** "Tách khỏi nguồn" ở một máy: máy thành máy tạo tay, sửa được, đồng bộ sau không đụng tới. Xoá nguồn: mọi máy vẫn còn.
+7. **Từ chối an toàn:** đổi đuôi `.xls`/`.xlsm` hoặc file không phải zip: báo lỗi rõ, không crash.

@@ -138,3 +138,15 @@ Chưa thử trên máy thật: (1) scheme `sshdesk://` có đăng ký với Laun
 
 ### B11. Bộ đăng nhập và kho Secure Enclave (ADR-030, 004c)
 Chỉ có test đơn vị (khoá phần mềm; test SE thật có điều kiện) và sshd tạm; chưa thử trên `.app` đã cài: (1) migration chuyển password cũ không mất; (2) askpass dưới Warp không hiện hộp thoại Keychain khi ký bằng chứng chỉ; (3) hành vi khi mất khoá `local.sshdesk.sekey`; (4) passphrase của bộ qua Warp với server thật; (5) luồng hold/"Xác nhận" sau khi nhập file. **Tránh/làm:** kịch bản K4s/K4e trong [TESTING.md](TESTING.md). **ADR:** 004c, 030.
+
+### B12. Nguồn máy chủ Excel/CSV (ADR-026)
+Chỉ có test đơn vị (đọc XLSX kiểm chứng bằng `unzip`/`zip` của macOS, Spotlight/QuickLook nhận được XML tối thiểu); chưa thử tay trên `.app`.
+- **File mẫu chưa mở thử trong Excel/Numbers:** file có thêm cột rộng, chữ đậm, validation Port 1–65535 so với XML tối thiểu đã kiểm; dropdown Môi trường/Loại chưa xem thực tế. **Làm:** kịch bản K4a trong [TESTING.md](TESTING.md).
+- **Không tính công thức:** ô có công thức chỉ lấy giá trị đã lưu (cache); không có giá trị thì để trống, app cảnh báo số ô công thức. Không đọc `.xls`, `.xlsm`, liên kết ngoài.
+- **Tiêu đề bị coi là cột bí mật:** nhận diện rộng (password, mật khẩu, secret, passphrase, otp, token, api key, credential...), nên tiêu đề tiếng Anh "Credential Set" cũng bị bỏ qua. **Tránh:** dùng tiêu đề "Bộ đăng nhập" (đúng mẫu).
+- **Phát hiện file đổi chỉ khi mở hoặc kích hoạt app** (mtime + fingerprint), không theo dõi liên tục.
+- **Bảng chọn một dòng:** chưa chọn nhiều máy để thao tác hàng loạt.
+- **Chưa có nguồn JSON / Ansible** (đang làm); lệnh xuất JSON, NetBox/Proxmox/AWS để sau.
+- **Chưa quyết:** có cho lưu mật khẩu từ cột mật khẩu vào Keychain không (hiện luôn bỏ qua).
+- Giới hạn cứng: file nén ≤ 20 MB, ≤ 5000 dòng, ≤ 200 cột; CSV ≤ 5 MB.
+- **ADR:** 026, 030.

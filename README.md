@@ -27,6 +27,37 @@ Lưu ý: tên chứa `$` thì dùng biến môi trường (make sẽ mở rộng
 
 Các lệnh khác: `make check` (lint + build + test), `make run`, `make app`. Xem [docs/TESTING.md](docs/TESTING.md).
 
+## Nhập danh sách máy chủ từ Excel
+Luồng chính để đưa nhiều máy chủ vào app (ADR-026). Mới có test đơn vị, **chưa thử tay** và file mẫu **chưa mở thử trong Excel/Numbers** (xem [KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md) B12).
+
+1. **Lấy file mẫu:** bấm "Tải file mẫu…" trong hub "Nguồn máy chủ" (mở bằng nút ở header THƯ MỤC của sidebar, menu Tệp, hoặc menu Xuất/nhập). Hoặc dùng bản trong repo `docs/templates/sshdesk-hosts-template.xlsx` (sinh lại bằng `make template`).
+2. **Điền sheet "Máy chủ"** (dòng 1 là tiêu đề, giữ nguyên):
+
+| Cột | Ý nghĩa |
+|---|---|
+| Tên | Tên hiển thị; cũng là khoá nhận ra máy khi đồng bộ lại |
+| IP/Hostname | Địa chỉ máy |
+| Port | Trống = 22 (SSH) hoặc 3389 (Windows) |
+| User | Tên đăng nhập (máy Windows: user RDP) |
+| Môi trường | DEV / UAT / STG / PROD (trống = OTHER) |
+| Thư mục/Dự án | Thư mục chứa máy |
+| Loại | SSH hoặc Windows (trống = SSH) |
+| Jump host | **Tên** máy khác làm bastion (trong cùng file, hoặc máy đã có trong app) |
+| Bộ đăng nhập | **Tên** bộ đăng nhập (ADR-030); tên chưa có thì xem trước báo "sẽ tạo bộ rỗng" |
+| Ghi chú | Ghi chú tự do |
+
+3. **Không có cột mật khẩu.** Mật khẩu nhập trong app (form máy hoặc bộ đăng nhập), không bao giờ nằm trong file. Sheet "Hướng dẫn" trong file giải thích từng cột và giá trị hợp lệ.
+4. **Chọn file:** file đúng mẫu vào thẳng màn xem trước (không phải ghép cột). Lỗi báo theo dòng (số dòng Excel, cột, lý do); dòng lỗi bị bỏ qua, dòng hợp lệ vẫn nhập được.
+
+### File của khách (ghép cột)
+File Excel/CSV không theo mẫu: chọn sheet và dòng tiêu đề, rồi ghép cột vào Tên, IP/Hostname, Port, User, Môi trường, Thư mục/Dự án, Ghi chú. App đoán sẵn theo tiêu đề tiếng Việt (có/không dấu) hoặc tiếng Anh. Cột có tiêu đề giống mật khẩu (password, mật khẩu, secret, passphrase, otp, token...) bị cảnh báo "sẽ bỏ qua" và **không ghép được vào trường nào**. Cách ghép được lưu theo nguồn, nên khi khách gửi bản mới chỉ cần "Đồng bộ lại" (cùng file) hoặc "Chọn file mới…" cho nguồn (một chạm). CSV nhận dấu phân cách `,` `;` hoặc tab.
+
+### Đồng bộ một chiều
+- Luôn qua màn xem trước (thêm / đổi từng trường cũ → mới / không còn trong nguồn / lỗi); **không tự áp dụng**. Mở app hoặc quay lại app, nếu file đổi thì hiện banner "Nguồn có thay đổi" kèm nút xem trước.
+- **Không tự xoá máy**: máy biến mất khỏi file chỉ bị đánh "Không còn trong nguồn". Xoá nguồn cũng không xoá máy.
+- Trường do nguồn quản lý (tên, địa chỉ, port, user, môi trường, thư mục, jump host) bị khoá trong form; ghi chú, yêu thích, forward, mật khẩu... vẫn là của app. Muốn sửa tay thì bấm "Tách khỏi nguồn".
+- **Tạm tắt tự điền mật khẩu:** khi IP/Port/User/Jump của máy đổi qua đồng bộ (hoặc bộ đăng nhập được gán từ file), app tạm tắt tự điền cho máy đó tới khi bạn mở chi tiết máy, xem lý do và bấm "Xác nhận". Lý do: file có thể bị sửa để trỏ tên máy quen sang địa chỉ lạ, và mật khẩu đã lưu sẽ bị đưa sang máy đó.
+
 ## Tính năng
 - **Máy chủ + thư mục:** thêm/sửa/xoá/nhân bản, tìm kiếm, môi trường (DEV/UAT/STG/PROD/OTHER), yêu thích, bastion (ProxyJump), import alias có sẵn từ `~/.ssh/config` (chỉ đọc). Thư mục ở sidebar, kéo host vào thư mục.
 - **Mở Warp:** sinh Tab Config và mở tab Warp chạy `ssh`; không có Warp thì Copy lệnh SSH. Click 1 lần = chọn, double-click / Return = mở.
@@ -41,6 +72,7 @@ Các lệnh khác: `make check` (lint + build + test), `make run`, `make app`. X
 - **Monitor:** lưới thẻ CPU / RAM / swap / đĩa / load / uptime theo thư mục (Linux).
 - **Máy Windows:** khai báo host RDP, mở bằng Windows App qua file `.rdp`; tuỳ chọn copy mật khẩu lên clipboard khi mở (tự xoá).
 - **CLI `sshdesk` + liên kết `sshdesk://`:** liệt kê và mở host từ terminal, Alfred, Raycast (mục bên dưới). Chưa thử tay.
+- **Nguồn máy chủ (Excel/CSV):** nhập và đồng bộ một chiều từ file Excel/CSV, có file mẫu (mục trên).
 - **Xuất / nhập:** danh sách máy chủ ra file JSON `*.sshdesk.json` (không có secret) và nhập lại có xem trước.
 - **Cài đặt (đang hoàn thiện):** ⌘, hoặc mục "Cài đặt" ở sidebar — mặc định Warp, truyền file, SSH config, bảo mật, Analyst, Monitor, Windows App, dữ liệu.
 - **Vòng đời app, phím tắt (đang hoàn thiện):** hỏi xác nhận khi thoát lúc còn job/tunnel/Monitor/Analyst; ⌘N, ⌘F, ⌘D, ⌘Return, ⌘E, ⌘1…⌘6.
@@ -60,6 +92,7 @@ Tất cả logic có test tự động. Nhưng nhiều tính năng mới chỉ c
 | SSH Keys (E1), Port forward (E3) | Chỉ sshd tạm | Server thật |
 | Monitor (I1/I2) | Chưa | Server Linux thật, giao diện |
 | Xuất/nhập (D1) | Chỉ test | Thử tay |
+| Nguồn máy chủ Excel/CSV (K4a) | Chỉ test đơn vị; XLSX kiểm bằng unzip/zip của macOS | Mở file mẫu trong Excel/Numbers, thử tay (TESTING mục K4a) |
 | Cài đặt (D4), vòng đời app (D2) | — | Đang làm |
 | Logo/giao diện (UI1) | — | Người dùng xem app |
 
