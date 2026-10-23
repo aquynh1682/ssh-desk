@@ -44,6 +44,9 @@ public struct PasswordPurgeResult: Sendable, Equatable {
     public var setItemsRemoved = 0
     /// Số item của bộ đăng nhập không xoá được.
     public var setItemsFailed = 0
+    /// Số bí mật nguồn số liệu (`metrics-*`, ADR-028) đã xoá; nguồn được giữ, chỉ mất token/password.
+    public var metricsItemsRemoved = 0
+    public var metricsItemsFailed = 0
 }
 
 public struct WindowsOpenReport: Sendable, Equatable {
@@ -62,6 +65,7 @@ public actor ConnectionService {
     private let credentials: (any CredentialStore)?
     private let secretClipboard: SecretClipboard?
     private let askpassHelper: URL?
+    private let metricSources: MetricSourceService?
     private let now: @Sendable () -> Date
 
     /// `userConfigPath`: nil = không `Include`. Chỉ truyền đường dẫn file đang tồn tại
@@ -72,12 +76,14 @@ public actor ConnectionService {
         launcher: WarpLauncher, rdpLauncher: WindowsAppLauncher = WindowsAppLauncher(),
         credentials: (any CredentialStore)? = nil, secretClipboard: SecretClipboard? = nil,
         askpassHelper: URL? = nil, settings: SettingsStore? = nil,
+        metricSources: MetricSourceService? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.settings = settings
         self.credentials = credentials
         self.secretClipboard = secretClipboard
         self.askpassHelper = askpassHelper
+        self.metricSources = metricSources
         self.repository = repository
         self.appConfigURL = appConfigURL
         self.userConfigPath = userConfigPath
@@ -214,12 +220,13 @@ public actor ConnectionService {
     /// Số mục mật khẩu đã lưu: host có tham chiếu riêng + item Keychain của bộ đăng nhập (password và passphrase).
     public func savedPasswordCount() async throws -> Int {
         let own = try await repository.all().filter { ($0.credentialReference ?? "").isEmpty == false }.count
-        guard let credentials else { return own }
+        let metrics = metricSources?.savedSecretCount() ?? 0
+        guard let credentials else { return own + metrics }
         let sets = try await repository.credentialSets().reduce(0) { count, set in
             count + (credentials.exists(ref: set.passwordReference) ? 1 : 0)
                 + (credentials.exists(ref: set.passphraseReference) ? 1 : 0)
         }
-        return own + sets
+        return own + sets + metrics
     }
 
     /// Xoá mọi item Keychain theo tham chiếu của từng host rồi gỡ tham chiếu khỏi hồ sơ (ADR-021).
@@ -255,6 +262,12 @@ public actor ConnectionService {
                     }
                 }
             }
+        }
+        // Token/password của nguồn số liệu (ADR-028): xoá item, giữ nguồn.
+        if let metricSources {
+            let purged = metricSources.purgeSecrets()
+            result.metricsItemsRemoved = purged.removed
+            result.metricsItemsFailed = purged.failed
         }
         return result
     }

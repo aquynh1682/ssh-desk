@@ -57,11 +57,14 @@ public struct MonitorSnapshot: Sendable, Equatable {
     public var memory: MemoryInfo?
     public var disks: [DiskUsage]
     public var uptimeSeconds: Double?
+    /// Nguồn Zabbix không có tổng RAM: chỉ có %. Dùng khi `memory == nil`.
+    public var reportedMemoryPercent: Double?
 
     public init(
         takenAt: Date, cpuPercent: Double?, load: LoadAverage?, cores: Int?, memory: MemoryInfo?,
-        disks: [DiskUsage], uptimeSeconds: Double?
+        disks: [DiskUsage], uptimeSeconds: Double?, reportedMemoryPercent: Double? = nil
     ) {
+        self.reportedMemoryPercent = reportedMemoryPercent
         self.takenAt = takenAt
         self.cpuPercent = cpuPercent
         self.load = load
@@ -72,7 +75,7 @@ public struct MonitorSnapshot: Sendable, Equatable {
     }
 
     public var memoryPercent: Double? {
-        guard let m = memory, m.totalKB > 0 else { return nil }
+        guard let m = memory, m.totalKB > 0 else { return reportedMemoryPercent }
         return Double(m.usedKB) / Double(m.totalKB) * 100
     }
 

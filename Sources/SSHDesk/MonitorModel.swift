@@ -20,6 +20,13 @@ final class MonitorModel {
     private(set) var folder: String?
     var expanded: Set<String> = []
     var intervalSeconds = 5
+    /// Chu kỳ khi dùng nguồn metrics (15/30/60 giây, ADR-028).
+    var metricsIntervalSeconds = MetricsMonitorCoordinator.defaultInterval
+    /// Mọi nguồn số liệu đã cấu hình (nạp lại mỗi lần màn hiện).
+    private(set) var metricSourceList: [MetricsSource] = []
+    /// Nguồn của thư mục đang chọn; nil = đo qua SSH (mặc định).
+    private(set) var activeSource: MetricsSource?
+    private var metricsCoordinator: MetricsMonitorCoordinator?
     private(set) var isRunning = false
     private(set) var states: [UUID: MonitorHostState] = [:]
     var prodConfirm: AnalystProdConfirm?
@@ -35,6 +42,42 @@ final class MonitorModel {
             HostPresentation.sshHosts(app.hosts).filter { $0.project == folder }, ascending: true)
     }
 
+    /// Đang đọc từ Prometheus/Zabbix (không mở SSH).
+    var usesMetricsSource: Bool { activeSource != nil }
+
+    var intervalChoices: [Int] {
+        usesMetricsSource ? MetricsMonitorCoordinator.intervalChoices : Self.intervals
+    }
+
+    var currentInterval: Int { usesMetricsSource ? metricsIntervalSeconds : intervalSeconds }
+
+    /// Nạp danh sách nguồn + nguồn gán cho thư mục hiện tại (đọc DB nhỏ, đồng bộ).
+    func reloadSources() {
+        guard let repo = app?.metricSources?.repository else {
+            metricSourceList = []
+            activeSource = nil
+            return
+        }
+        metricSourceList = (try? repo.all()) ?? []
+        if let folder, let id = try? repo.assignedSourceID(folder: folder) {
+            activeSource = metricSourceList.first { $0.id == id }
+        } else {
+            activeSource = nil
+        }
+    }
+
+    /// Chọn nguồn cho thư mục (nil = SSH). Dừng vòng hiện tại rồi chạy lại với nguồn mới.
+    func setSource(_ id: UUID?) {
+        guard let folder, let repo = app?.metricSources?.repository else { return }
+        stop()
+        do { try repo.assign(folder: folder, sourceID: id) } catch {
+            app?.show(error, title: "Không lưu được nguồn số liệu")
+        }
+        states = [:]
+        reloadSources()
+        requestStart()
+    }
+
     // MARK: - Chọn thư mục
 
     func select(_ name: String) {
@@ -44,6 +87,7 @@ final class MonitorModel {
         folder = name
         expanded.insert(name)
         states = [:]
+        reloadSources()
         requestStart()
     }
 
@@ -63,6 +107,7 @@ final class MonitorModel {
             if let first = app?.folderCounts.first { select(first.name) }
             return
         }
+        reloadSources()
         if !isRunning { requestStart() }
     }
 
@@ -77,6 +122,11 @@ final class MonitorModel {
     /// PROD thì hỏi xác nhận trước khi chạy lệnh trên server.
     func requestStart() {
         guard !isRunning, !hosts.isEmpty else { return }
+        // Nguồn metrics không chạy lệnh nào trên server -> không cần xác nhận PROD (ADR-028).
+        if let source = activeSource {
+            startMetrics(source: source)
+            return
+        }
         if hosts.contains(where: { $0.environment == .prod }) {
             let prodNames = hosts.filter { $0.environment == .prod }.map(\.displayName)
             prodConfirm = AnalystProdConfirm(
@@ -144,6 +194,25 @@ final class MonitorModel {
         }
     }
 
+    private func startMetrics(source: MetricsSource) {
+        guard let app, !isRunning else { return }
+        let hosts = self.hosts
+        guard !hosts.isEmpty else { return }
+        let myToken = UUID()
+        token = myToken
+        states = [:]
+        isRunning = true
+        let provider = MetricsClientFactory.make(source: source, credentials: app.credentials)
+        let coord = MetricsMonitorCoordinator(
+            provider: provider,
+            onUpdate: { [weak self] state in
+                Task { @MainActor in self?.apply(state, token: myToken) }
+            })
+        metricsCoordinator = coord
+        let seconds = TimeInterval(metricsIntervalSeconds)
+        Task { await coord.start(hosts: hosts, interval: seconds) }
+    }
+
     private func apply(_ state: MonitorHostState, token t: UUID) {
         guard t == token else { return }
         states[state.hostID] = state
@@ -154,10 +223,13 @@ final class MonitorModel {
 
     /// Dừng vòng và đóng phiên Monitor tự mở. Trạng thái cuối vẫn hiển thị.
     func stop() {
-        guard isRunning || coordinator != nil else { return }
+        guard isRunning || coordinator != nil || metricsCoordinator != nil else { return }
         isRunning = false
         pendingPrompts = []
         token = UUID()
+        let metrics = metricsCoordinator
+        metricsCoordinator = nil
+        Task { await metrics?.stop() }
         let coord = coordinator
         coordinator = nil
         // Mật khẩu không tích lưu bỏ cùng phiên Monitor (ADR-029).
@@ -174,6 +246,13 @@ final class MonitorModel {
     func applyDefaultInterval(_ seconds: Int) { setInterval(seconds) }
 
     func setInterval(_ seconds: Int) {
+        if usesMetricsSource {
+            guard MetricsMonitorCoordinator.intervalChoices.contains(seconds) else { return }
+            metricsIntervalSeconds = seconds
+            let metrics = metricsCoordinator
+            if isRunning { Task { await metrics?.setInterval(TimeInterval(seconds)) } }
+            return
+        }
         guard Self.intervals.contains(seconds) else { return }
         intervalSeconds = seconds
         let coord = coordinator
@@ -182,7 +261,11 @@ final class MonitorModel {
 
     func retry(_ hostID: UUID) {
         let coord = coordinator
-        Task { await coord?.retry(hostID: hostID) }
+        let metrics = metricsCoordinator
+        Task {
+            await coord?.retry(hostID: hostID)
+            await metrics?.retry(hostID: hostID)
+        }
     }
 
     /// Thoát app: dừng và đóng phiên (chờ xong).
@@ -192,6 +275,9 @@ final class MonitorModel {
         token = UUID()
         let coord = coordinator
         coordinator = nil
+        let metrics = metricsCoordinator
+        metricsCoordinator = nil
+        await metrics?.stop()
         await coord?.stop()
         app?.ephemeralVault.releaseAll(owner: Self.passwordOwner)
     }

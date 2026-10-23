@@ -222,6 +222,31 @@ public final class Database: @unchecked Sendable {
             "ALTER TABLE hosts ADD COLUMN source_missing INTEGER NOT NULL DEFAULT 0",
             "CREATE INDEX idx_hosts_source ON hosts(source_id)",
         ]),
+        // v11: nguồn số liệu Prometheus/Zabbix (ADR-028). KHÔNG có cột secret: token/password ở CredentialStore,
+        // `credential_ref` chỉ là tham chiếu (`metrics-<uuid>`). Gán thư mục -> nguồn ở bảng riêng;
+        // xoá nguồn -> gán biến mất (CASCADE), thư mục quay về đo qua SSH.
+        Migration(statements: [
+            """
+            CREATE TABLE metric_sources (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('prometheus', 'zabbix')),
+                base_url TEXT NOT NULL,
+                auth_kind TEXT NOT NULL CHECK (auth_kind IN ('none', 'bearer', 'basic')),
+                basic_user TEXT,
+                credential_ref TEXT,
+                instance_template TEXT NOT NULL,
+                allow_insecure_http INTEGER NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE metric_folder_sources (
+                folder TEXT PRIMARY KEY NOT NULL,
+                source_id TEXT NOT NULL REFERENCES metric_sources(id) ON DELETE CASCADE
+            )
+            """,
+        ]),
     ]
 
     /// Phiên bản schema mà bản app này biết (hiện ở màn Cài đặt).

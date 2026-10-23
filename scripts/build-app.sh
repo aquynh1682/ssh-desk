@@ -82,6 +82,12 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
             </array>
         </dict>
     </array>
+    <!-- ADR-028: http tới IP/tên nội bộ (.local, không dấu chấm). KHÔNG dùng NSAllowsArbitraryLoads. -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <!-- Kiểu kéo thả nội bộ giữa hai khung của màn Truyền file (BrowserDragPayload.typeIdentifier). -->
     <key>UTExportedTypeDeclarations</key>
     <array>

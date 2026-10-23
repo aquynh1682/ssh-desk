@@ -63,13 +63,31 @@ struct MonitorView: View {
                     Text(m.isRunning ? "Đang theo dõi" : "Đã dừng")
                         .font(.system(size: 12.5)).foregroundStyle(Theme.textSecondary)
                 }
+                if let source = m.activeSource, source.usesHTTP {
+                    Label(
+                        source.sendsSecretOverInsecureHTTP
+                            ? "http không mã hoá — token/password gửi dạng rõ"
+                            : "Nguồn dùng http (không mã hoá)",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.system(size: 12)).foregroundStyle(Theme.red)
+                }
             }
             Spacer()
             Picker(
-                "Chu kỳ",
-                selection: Binding(get: { m.intervalSeconds }, set: { m.setInterval($0) })
+                "Nguồn",
+                selection: Binding(get: { m.activeSource?.id }, set: { m.setSource($0) })
             ) {
-                ForEach(MonitorModel.intervals, id: \.self) { Text("\($0) giây").tag($0) }
+                Text("SSH (mặc định)").tag(UUID?.none)
+                ForEach(m.metricSourceList) { Text("\($0.name) · \($0.kind.title)").tag(UUID?.some($0.id)) }
+            }
+            .pickerStyle(.menu).fixedSize()
+            .help("Đo qua SSH hoặc đọc từ Prometheus/Zabbix (Cài đặt → Nguồn số liệu)")
+            Picker(
+                "Chu kỳ",
+                selection: Binding(get: { m.currentInterval }, set: { m.setInterval($0) })
+            ) {
+                ForEach(m.intervalChoices, id: \.self) { Text("\($0) giây").tag($0) }
             }
             .pickerStyle(.menu).fixedSize()
             .help("Khoảng thời gian giữa hai lần đọc")
@@ -195,6 +213,11 @@ struct MonitorCard: View {
                     history: state?.cpuHistory.values ?? [])
                 Text("Load " + MonitorFormat.load(snap.load, cores: snap.cores))
                     .font(.system(size: 11.5)).foregroundStyle(Theme.textSecondary)
+                if snap.memory == nil, let pct = snap.memoryPercent {
+                    meter(
+                        "RAM", MonitorFormat.percent(pct), pct, snap.memoryLevel(using: thresholds),
+                        history: state?.memoryHistory.values ?? [])
+                }
                 if let mem = snap.memory {
                     meter(
                         "RAM",

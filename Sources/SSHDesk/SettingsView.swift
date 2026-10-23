@@ -54,7 +54,7 @@ struct SettingsView: View {
             Button("Huỷ", role: .cancel) {}
         } message: {
             Text(
-                "Xoá \(savedPasswordCount) mục (mật khẩu của máy, password và passphrase của các bộ đăng nhập) khỏi Keychain. Bộ đăng nhập, việc gán bộ và hồ sơ máy chủ được giữ nguyên; lần sau đăng nhập sẽ phải nhập lại mật khẩu."
+                "Xoá \(savedPasswordCount) mục (mật khẩu của máy, password và passphrase của các bộ đăng nhập, token/password của nguồn số liệu) khỏi Keychain. Bộ đăng nhập, việc gán bộ và hồ sơ máy chủ được giữ nguyên; lần sau đăng nhập sẽ phải nhập lại mật khẩu."
             )
         }
     }
@@ -338,6 +338,7 @@ struct SettingsView: View {
                 }
                 .frame(width: 130)
             }
+            MetricSourcesSection(model: model)
         }
     }
 

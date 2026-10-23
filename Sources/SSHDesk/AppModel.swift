@@ -156,6 +156,8 @@ final class AppModel {
     /// Màn "Monitor" tài nguyên server (ADR-019).
     @ObservationIgnored lazy var monitor = MonitorModel(app: self)
     private(set) var analystRepository: AnalystRunRepository?
+    /// Nguồn số liệu Prometheus/Zabbix (ADR-028).
+    private(set) var metricSources: MetricSourceService?
     private(set) var forwardRepository: PortForwardRepository?
     /// Các tunnel `ssh -N -L` (ADR-011).
     @ObservationIgnored lazy var tunnels = TunnelsModel(app: self)
@@ -198,13 +200,17 @@ final class AppModel {
             settingsStore.update(loaded)
             settings = loaded
             // Migration một lần Keychain plaintext -> Secure Enclave (ADR-004c), xong trước khi hiện danh sách.
+            let metricRepo = MetricSourceRepository(database: db)
             await CredentialMigration.runIfNeeded(
-                store: sealedStore, repository: repo, settings: settingsRepo)
+                store: sealedStore, repository: repo, settings: settingsRepo, metricSources: metricRepo)
+            let metricService = MetricSourceService(repository: metricRepo, credentials: credentials)
+            metricSources = metricService
             let service = ConnectionService(
                 repository: repo, appConfigURL: paths.sshConfigURL,
                 userConfigPath: nil, launcher: WarpLauncher(),
                 credentials: credentials, secretClipboard: secretClipboard,
-                askpassHelper: AskpassHelper.defaultURL(), settings: settingsStore)
+                askpassHelper: AskpassHelper.defaultURL(), settings: settingsStore,
+                metricSources: metricService)
             self.service = service
             hostRepository = repo
             passwordEntry = PasswordEntryService(
@@ -889,14 +895,16 @@ final class AppModel {
         do {
             let r = try await service.clearAllPasswords()
             await reload()
-            if r.failed > 0 || r.setItemsFailed > 0 {
+            let removed = r.removed + r.setItemsRemoved + r.metricsItemsRemoved
+            let failed = r.failed + r.setItemsFailed + r.metricsItemsFailed
+            if failed > 0 {
                 alert = AppAlert(
                     title: "Xoá mật khẩu chưa hoàn tất",
                     message:
-                        "Đã xoá \(r.removed + r.setItemsRemoved) mật khẩu; \(r.failed + r.setItemsFailed) mục không xoá được (Keychain từ chối). Thử lại sau."
+                        "Đã xoá \(removed) mật khẩu; \(failed) mục không xoá được (Keychain từ chối). Thử lại sau."
                 )
             } else {
-                showToast("Đã xoá \(r.removed + r.setItemsRemoved) mật khẩu đã lưu")
+                showToast("Đã xoá \(removed) mật khẩu đã lưu")
             }
         } catch { show(error, title: "Không xoá được mật khẩu") }
     }
