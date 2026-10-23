@@ -27,7 +27,7 @@ Thư mục trong `SSHDeskCore/`:
 - `Browser/` — logic thuần của màn Truyền file (tab, đường dẫn, kế hoạch truyền).
 - `Keys/` — kiểm kê, tạo, cài SSH key. `Tunnel/` — `TunnelManager`, `PortForward`.
 - `Analyst/`, `Monitor/` — lệnh whitelist, parser, coordinator. `Windows/` — `.rdp`, Windows App, clipboard bí mật.
-- `Inventory/` — nguồn máy chủ đồng bộ một chiều (ADR-026): `BoundedProcess`, `XLSXReader`, `CSVReader`, `ColumnMapping`, `InventoryTableParser`, `InventorySync` (dựng kế hoạch), `InventoryRepository` (áp dụng), `InventoryTemplate` (sinh file mẫu), `InventoryFile`.
+- `Inventory/` — nguồn máy chủ đồng bộ một chiều (ADR-026): `BoundedProcess`, `XLSXReader`, `CSVReader`, `ColumnMapping`, `InventoryTableParser`, `InventorySync` (dựng kế hoạch), `InventoryRepository` (áp dụng), `InventoryTemplate` (sinh file mẫu), `InventoryFile`, `InventoryStructured` (nguồn JSON/Ansible), `AnsibleInventory` (INI), `AnsibleYAML` (YAML tập con). Ansible tự parse, **không chạy process**.
 - `Exchange/` — xuất/nhập JSON. `Settings/` — `AppSettings`, `SettingsRepository` (đang hoàn thiện). `App/` — `AppPaths`, `ConnectionService`, `HostDraft`, `QuitActivity` (đang hoàn thiện).
 
 ## Luồng chính
@@ -117,4 +117,4 @@ Chi tiết trong [architecture.md](architecture.md).
 | 025 | CLI `sshdesk` + URL scheme | DB chỉ đọc, file request 0600 hết hạn 30 giây, URL ngoài luôn xác nhận. |
 | 029 | Hỏi mật khẩu lần đầu + "Lưu vào Keychain" | Sheet khi máy chưa có mật khẩu; kiểm tra đăng nhập trước khi lưu (không `StrictHostKeyChecking=no`, không tự yes host key); không tích lưu thì giữ trong bộ nhớ theo phiên (Warp thì gõ trong terminal); lưu vào máy/bộ có sẵn/bộ mới (cùng ADR-030). |
 | 030 | Bộ đăng nhập dùng chung | `credential_sets`, `CredentialResolution` (host > bộ > Cài đặt), passphrase chỉ qua askpass, hold khi gán từ file. |
-| 026 | Nguồn máy chủ đồng bộ một chiều | Excel/CSV (file mẫu + ghép cột) đã làm; JSON/Ansible đang làm. Luôn xem trước, một transaction, không tự xoá, hold khi địa chỉ đổi. |
+| 026 | Nguồn máy chủ đồng bộ một chiều | Excel/CSV (file mẫu + ghép cột), JSON, Ansible tĩnh đã làm (chỉ test đơn vị). Luôn xem trước, một transaction, không tự xoá, hold khi địa chỉ đổi. |

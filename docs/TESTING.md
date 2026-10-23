@@ -91,6 +91,16 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 6. **Tách và xoá nguồn:** "Tách khỏi nguồn" ở một máy: máy thành máy tạo tay, sửa được, đồng bộ sau không đụng tới. Xoá nguồn: mọi máy vẫn còn.
 7. **Từ chối an toàn:** đổi đuôi `.xls`/`.xlsm` hoặc file không phải zip: báo lỗi rõ, không crash.
 
+**K4b — Nguồn JSON và Ansible (ADR-026).** Cần `make install`. Dùng dữ liệu giả (`192.0.2.x`, `example.com`), không cần server thật. Chưa ai chạy mục này; ghi lại kết quả.
+1. **INI:** file có `[web]` với `web[01:03].example.com ansible_host=192.0.2.11 ansible_user=deploy`, `[db]`, `[prod:children]` gồm web và db, `[web:vars]` đặt `ansible_port=2222`, một host có `ansible_password=x`. "Thêm nguồn" -> Ansible: xem trước có 3 máy web (01..03) với port 2222, tag theo group (web, prod); cảnh báo "đã bỏ qua biến mật khẩu"; mật khẩu không hiện ở xem trước, ghi chú hay chi tiết máy.
+2. **YAML:** file `all/children/hosts` có một biến `!vault |` (hoặc `ansible_password` kiểu !vault): bỏ qua kèm cảnh báo, các máy khác vẫn nhập được.
+3. **Đổi ansible_host:** sửa IP một máy, quay lại app: banner "Nguồn có thay đổi" -> Xem trước (IP cũ -> mới) -> Áp dụng. Máy bị tạm tắt tự điền (chi tiết ghi lý do; mở Warp báo cần xác nhận) -> "Xác nhận địa chỉ" -> tự điền lại.
+4. **Thiếu ansible_user:** máy mới dùng tên đăng nhập macOS và có cảnh báo; máy đã có giữ user cũ khi bỏ `ansible_user` khỏi file.
+5. **Tag chỉ cộng thêm:** tự thêm một tag vào máy, đồng bộ lại: tag của bạn còn; group mới thêm tag mới.
+6. **JSON:** xuất danh sách từ app (Xuất/nhập), "Thêm nguồn" -> JSON chọn file đó: xem trước khớp máy hiện có. Sửa một máy trong file, đồng bộ: hiện thay đổi từng trường. Lỗi hiện "Dòng N" là thứ tự máy trong mảng `hosts`.
+7. **Lỗi dòng:** YAML có anchor/alias (`&a`, `*a`), danh sách (`- x`) hoặc chuỗi nhiều dòng: báo lỗi theo dòng, không crash. Pattern host quá dài hoặc >8 khoảng: máy đó bị bỏ, báo lỗi.
+8. **Không process:** trong lúc đồng bộ Ansible không có tiến trình `ansible*` nào chạy (Activity Monitor).
+
 **K4c — Hỏi mật khẩu lần đầu (ADR-029).** Cần `make install`, server thật (Linux, đăng nhập bằng mật khẩu) có thể thử. Mới chạy với ssh giả; ghi lại kết quả. Máy phải chưa lưu mật khẩu, không bastion, không imported alias, tự điền bật.
 1. **Host key mới:** máy chưa từng kết nối (xoá dòng cũ khỏi known_hosts của bạn nếu cần), Mở -> sheet -> nhập mật khẩu, tích lưu: app báo "Chưa xác nhận host key", không lưu, không tự yes. Dùng "Bỏ qua, nhập trong terminal", gõ yes ở Warp, rồi thử lại.
 2. **Mật khẩu đúng:** tích lưu -> lưu, mở Warp tự điền; mở lại không hỏi nữa. **Mật khẩu sai:** báo "Sai mật khẩu", nhập lại được, không có mục lưu mới (chi tiết máy vẫn "chưa lưu").

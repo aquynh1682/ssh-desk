@@ -52,6 +52,15 @@ Luồng chính để đưa nhiều máy chủ vào app (ADR-026). Mới có test
 ### File của khách (ghép cột)
 File Excel/CSV không theo mẫu: chọn sheet và dòng tiêu đề, rồi ghép cột vào Tên, IP/Hostname, Port, User, Môi trường, Thư mục/Dự án, Ghi chú. App đoán sẵn theo tiêu đề tiếng Việt (có/không dấu) hoặc tiếng Anh. Cột có tiêu đề giống mật khẩu (password, mật khẩu, secret, passphrase, otp, token...) bị cảnh báo "sẽ bỏ qua" và **không ghép được vào trường nào**. Cách ghép được lưu theo nguồn, nên khi khách gửi bản mới chỉ cần "Đồng bộ lại" (cùng file) hoặc "Chọn file mới…" cho nguồn (một chạm). CSV nhận dấu phân cách `,` `;` hoặc tab.
 
+### Nguồn JSON và Ansible
+Trong hub "Nguồn máy chủ…", menu "Thêm nguồn" có Excel/CSV, JSON, Ansible. Mới có test đơn vị, **chưa thử tay**, chưa thử với inventory thật.
+- **JSON:** file đúng định dạng xuất của app (`*.sshdesk.json`, `sshdesk-hosts` v1). Khoá nhận ra máy là `id` trong file.
+- **Ansible:** inventory **tĩnh** INI hoặc YAML. App tự đọc file, **không chạy `ansible-inventory`** hay process nào, không đọc `host_vars/`/`group_vars/`.
+  - Lấy `ansible_host`, `ansible_port`, `ansible_user` (và dạng `ansible_ssh_*`). Khoá = tên host trong inventory.
+  - Biến mật khẩu (`ansible_password`, `ansible_ssh_pass`, `ansible_become_pass`...) và giá trị `!vault` bị **bỏ qua**, app cảnh báo.
+  - Tên group thành tag; tag từ nguồn **chỉ cộng thêm**, không gỡ tag bạn tự đặt.
+  - Thiếu `ansible_user`: máy **mới** dùng tên đăng nhập macOS (có cảnh báo); máy đã có giữ user cũ.
+
 ### Đồng bộ một chiều
 - Luôn qua màn xem trước (thêm / đổi từng trường cũ → mới / không còn trong nguồn / lỗi); **không tự áp dụng**. Mở app hoặc quay lại app, nếu file đổi thì hiện banner "Nguồn có thay đổi" kèm nút xem trước.
 - **Không tự xoá máy**: máy biến mất khỏi file chỉ bị đánh "Không còn trong nguồn". Xoá nguồn cũng không xoá máy.
@@ -72,7 +81,7 @@ File Excel/CSV không theo mẫu: chọn sheet và dòng tiêu đề, rồi ghé
 - **Monitor:** lưới thẻ CPU / RAM / swap / đĩa / load / uptime theo thư mục (Linux).
 - **Máy Windows:** khai báo host RDP, mở bằng Windows App qua file `.rdp`; tuỳ chọn copy mật khẩu lên clipboard khi mở (tự xoá).
 - **CLI `sshdesk` + liên kết `sshdesk://`:** liệt kê và mở host từ terminal, Alfred, Raycast (mục bên dưới). Chưa thử tay.
-- **Nguồn máy chủ (Excel/CSV):** nhập và đồng bộ một chiều từ file Excel/CSV, có file mẫu (mục trên).
+- **Nguồn máy chủ:** nhập và đồng bộ một chiều từ Excel/CSV (có file mẫu), JSON, Ansible inventory tĩnh (mục trên).
 - **Xuất / nhập:** danh sách máy chủ ra file JSON `*.sshdesk.json` (không có secret) và nhập lại có xem trước.
 - **Cài đặt (đang hoàn thiện):** ⌘, hoặc mục "Cài đặt" ở sidebar — mặc định Warp, truyền file, SSH config, bảo mật, Analyst, Monitor, Windows App, dữ liệu.
 - **Vòng đời app, phím tắt (đang hoàn thiện):** hỏi xác nhận khi thoát lúc còn job/tunnel/Monitor/Analyst; ⌘N, ⌘F, ⌘D, ⌘Return, ⌘E, ⌘1…⌘6.
