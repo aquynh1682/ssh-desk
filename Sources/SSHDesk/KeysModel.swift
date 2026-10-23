@@ -38,6 +38,7 @@ struct KeyAdoptionOffer: Identifiable {
 final class KeysModel {
     unowned let app: AppModel
     private let inventory: SSHKeyInventory
+    private let secureEnclave: SecureEnclaveKeyService
 
     var keys: [SSHKeyInfo] = []
     var loaded = false
@@ -57,20 +58,90 @@ final class KeysModel {
     var agentListing: AgentKeyListing?
     var agentLoading = false
 
+    /// Khoá Secure Enclave (ADR-027). Mục bị ẩn khi máy thiếu dylib/sc_auth.
+    var seIdentities: [SecureEnclaveIdentity] = []
+    var seBusy = false
+    var showCreateSE = false
+    var pendingDeleteSE: SecureEnclaveIdentity?
+    /// Tạo identity xong nhưng xuất file handle lỗi: đề nghị xoá (không tự xoá im lặng).
+    var seFailedLabel: (label: String, reason: String)?
+
     private var session: KeyTaskSession?
 
     init(app: AppModel, directory: URL = SSHKeyInventory.defaultDirectory) {
         self.app = app
         inventory = SSHKeyInventory(directory: directory)
+        secureEnclave = SecureEnclaveKeyService(
+            directory: directory, helper: ControllingTTYHelper.defaultURL())
     }
 
+    var seAvailable: Bool { secureEnclave.isAvailable }
+
     var selected: SSHKeyInfo? { keys.first { $0.name == selectionName } }
-    var isBusy: Bool { task != nil }
+    var isBusy: Bool { task != nil || seBusy }
 
     func refresh() async {
         keys = await inventory.list()
+        await refreshSecureEnclave()
         loaded = true
         if let s = selectionName, !keys.contains(where: { $0.name == s }) { selectionName = nil }
+    }
+
+    // MARK: - Khoá Secure Enclave (ADR-027)
+
+    func refreshSecureEnclave() async {
+        guard seAvailable else {
+            seIdentities = []
+            return
+        }
+        seIdentities = (try? await secureEnclave.list()) ?? []
+    }
+
+    /// Có cặp file handle (cả hai file thường) trong thư mục khoá.
+    func seHasHandle(_ identity: SecureEnclaveIdentity) -> Bool {
+        secureEnclave.hasHandleFiles(label: identity.label)
+    }
+
+    /// Cặp key E1 tương ứng với handle (để cài lên server / đổi xác thực host).
+    func seKeyInfo(_ identity: SecureEnclaveIdentity) -> SSHKeyInfo? {
+        let name = SecureEnclaveKeyService.handleName(label: identity.label)
+        return keys.first { $0.name == name && !$0.isSymlink }
+    }
+
+    var seErrorLabels: Set<String> { Set(seIdentities.map(\.label)) }
+
+    /// true nếu đã tạo xong (form đóng).
+    func createSecureEnclave(label: String, protection: SecureEnclaveProtection) async -> Bool {
+        guard !isBusy else { return false }
+        seBusy = true
+        defer { seBusy = false }
+        do {
+            try await secureEnclave.create(label: label, protection: protection)
+            await refresh()
+            selectionName = SecureEnclaveKeyService.handleName(label: label)
+            app.showToast("Đã tạo khoá Secure Enclave “\(label)”")
+            return true
+        } catch SecureEnclaveError.handleExportFailed(let label, let reason) {
+            await refresh()
+            seFailedLabel = (label, reason)
+            return true
+        } catch {
+            app.show(error, title: "Không tạo được khoá Secure Enclave")
+            return false
+        }
+    }
+
+    func deleteSecureEnclave(label: String) async {
+        guard !isBusy else { return }
+        seBusy = true
+        defer { seBusy = false }
+        do {
+            try await secureEnclave.delete(label: label)
+            app.showToast("Đã xoá khoá Secure Enclave “\(label)”")
+        } catch {
+            app.show(error, title: "Không xoá được khoá Secure Enclave")
+        }
+        await refresh()
     }
 
     // MARK: - Key trong agent (ADR-024)

@@ -29,6 +29,7 @@ struct KeysView: View {
                 }
                 .cardStyle()
                 AgentKeysSection(keys: keys)
+                if keys.seAvailable { SecureEnclaveSection(model: model, keys: keys) }
             }
             .padding(.horizontal, 22).padding(.top, 18).padding(.bottom, 14)
             .frame(maxWidth: .infinity)
@@ -45,6 +46,43 @@ struct KeysView: View {
         }
         .task { await keys.refresh() }
         .sheet(isPresented: $keys.showGenerate) { GenerateKeySheet(keys: keys) }
+        .sheet(isPresented: $keys.showCreateSE) { CreateSecureEnclaveSheet(keys: keys) }
+        .confirmationDialog(
+            "Xoá khoá Secure Enclave “\(keys.pendingDeleteSE?.label ?? "")”?",
+            isPresented: Binding(
+                get: { keys.pendingDeleteSE != nil },
+                set: { if !$0 { keys.pendingDeleteSE = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Xoá khoá", role: .destructive) {
+                if let id = keys.pendingDeleteSE {
+                    keys.pendingDeleteSE = nil
+                    Task { await keys.deleteSecureEnclave(label: id.label) }
+                }
+            }
+            Button("Huỷ", role: .cancel) { keys.pendingDeleteSE = nil }
+        } message: {
+            Text(
+                "Khoá nằm trong chip Secure Enclave và KHÔNG thể khôi phục. Máy chủ đã cài public key này sẽ không đăng nhập được bằng nó nữa. File handle trong ~/.ssh cũng bị xoá."
+            )
+        }
+        .confirmationDialog(
+            "Đã tạo khoá nhưng chưa xuất được file",
+            isPresented: Binding(
+                get: { keys.seFailedLabel != nil },
+                set: { if !$0 { keys.seFailedLabel = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Xoá khoá “\(keys.seFailedLabel?.label ?? "")” để tạo lại", role: .destructive) {
+                if let f = keys.seFailedLabel {
+                    keys.seFailedLabel = nil
+                    Task { await keys.deleteSecureEnclave(label: f.label) }
+                }
+            }
+            Button("Giữ lại", role: .cancel) { keys.seFailedLabel = nil }
+        } message: {
+            Text(keys.seFailedLabel?.reason ?? "")
+        }
     }
 
     private var header: some View {
@@ -510,5 +548,138 @@ private struct AgentKeysSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle()
         .onChange(of: keys.agentPreset) { _, _ in Task { await keys.refreshAgent() } }
+    }
+}
+
+// MARK: - Khoá Secure Enclave (ADR-027)
+
+/// Mục "Khoá Secure Enclave": identity trong keychain macOS + file handle trong ~/.ssh.
+private struct SecureEnclaveSection: View {
+    @Bindable var model: AppModel
+    @Bindable var keys: KeysModel
+    @Local private var installFor: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Khoá Secure Enclave").font(.system(size: 15, weight: .semibold))
+                Spacer()
+                if keys.seBusy { ProgressView().controlSize(.small) }
+                Button {
+                    keys.showCreateSE = true
+                } label: {
+                    Label("Tạo khoá Secure Enclave…", systemImage: "plus")
+                }
+                .buttonStyle(OutlineButtonStyle())
+                .disabled(keys.isBusy)
+            }
+            if keys.seIdentities.isEmpty {
+                Text("Chưa có khoá Secure Enclave. Khoá nằm trong chip, không bao giờ rời máy này.")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+            }
+            ForEach(keys.seIdentities) { identity in
+                HStack(spacing: 10) {
+                    Image(systemName: "lock.shield").foregroundStyle(Theme.green)
+                    Text(identity.label).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    Text(identity.protection == "bio" ? "Touch ID" : "Không bảo vệ")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                    if !identity.isManageable {
+                        EmptyView()
+                    } else if keys.seHasHandle(identity) {
+                        Text("Có file handle trong ~/.ssh").font(.caption).foregroundStyle(Theme.textSecondary)
+                    } else {
+                        Label("Thiếu file handle trong ~/.ssh", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption).foregroundStyle(Theme.amber)
+                    }
+                    Spacer(minLength: 0)
+                    if !identity.isManageable {
+                        Text("Tạo ngoài app — chỉ xem").font(.caption).foregroundStyle(Theme.textSecondary)
+                    }
+                    if identity.isManageable, let info = keys.seKeyInfo(identity) {
+                        Button("Cài lên server…") { installFor = identity.label }
+                            .controlSize(.small)
+                            .disabled(keys.isBusy)
+                            .popover(
+                                isPresented: Binding(
+                                    get: { installFor == identity.label },
+                                    set: { if !$0 { installFor = nil } }),
+                                arrowEdge: .bottom
+                            ) {
+                                KeyInstallHostPicker(model: model) { host in
+                                    installFor = nil
+                                    keys.requestInstall(key: info, host: host)
+                                }
+                            }
+                    }
+                    if identity.isManageable {
+                        Button("Xoá khoá Secure Enclave", role: .destructive) { keys.pendingDeleteSE = identity }
+                            .controlSize(.small).disabled(keys.isBusy)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+    }
+}
+
+struct CreateSecureEnclaveSheet: View {
+    @Bindable var keys: KeysModel
+    @Local private var label = ""
+    @Local private var protection: SecureEnclaveProtection = .biometric
+    @Local private var working = false
+
+    private var labelError: String? {
+        if label.isEmpty { return nil }
+        do { try SecureEnclaveKeyService.validateLabel(label) } catch {
+            return "Nhãn chỉ gồm chữ, số, `.`, `_`, `-` (tối đa 64 ký tự)."
+        }
+        if keys.seErrorLabels.contains(label) { return "Đã có khoá Secure Enclave tên này." }
+        let path = SSHKeyInventory.defaultDirectory.appendingPathComponent(
+            SecureEnclaveKeyService.handleName(label: label)
+        ).path
+        if FileManager.default.fileExists(atPath: path) || FileManager.default.fileExists(atPath: path + ".pub") {
+            return "File \(path) đã tồn tại — app không ghi đè."
+        }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Tạo khoá Secure Enclave").font(.title2.bold())
+            Text(
+                "Khoá ECDSA P-256 nằm trong chip, không xuất ra được. App chỉ ghi file handle (tham chiếu) vào ~/.ssh."
+            )
+            .font(.callout).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Nhãn").font(.caption).foregroundStyle(.secondary)
+                TextField("vd. macbook-work", text: $label).textFieldStyle(.roundedBorder)
+                    .font(.body.monospaced())
+                if let labelError { Text(labelError).font(.caption).foregroundStyle(Theme.red) }
+            }
+            Picker("Bảo vệ", selection: $protection) {
+                Text("Touch ID mỗi lần dùng").tag(SecureEnclaveProtection.biometric)
+                Text("Không").tag(SecureEnclaveProtection.none)
+            }
+            .pickerStyle(.radioGroup)
+            HStack {
+                Spacer()
+                Button("Huỷ") { keys.showCreateSE = false }.keyboardShortcut(.cancelAction).disabled(working)
+                Button("Tạo khoá") {
+                    working = true
+                    Task {
+                        let done = await keys.createSecureEnclave(label: label, protection: protection)
+                        working = false
+                        if done { keys.showCreateSE = false }
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(label.isEmpty || labelError != nil || working || keys.isBusy)
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
     }
 }

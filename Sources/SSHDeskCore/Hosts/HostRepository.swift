@@ -279,7 +279,10 @@ public actor HostRepository {
     /// Spec cho các host managed (host imported dùng nguyên alias gốc, không sinh Host block).
     /// `defaultIdentityAgent`: mặc định trong Cài đặt (ADR-024); rỗng/nil = không ghi directive.
     /// User/IdentityFile/IdentityAgent lấy từ `CredentialResolution` (host > bộ đăng nhập > Cài đặt, ADR-030).
-    public func sshSpecs(defaultIdentityAgent: String? = nil) throws -> [SSHHostSpec] {
+    public func sshSpecs(
+        defaultIdentityAgent: String? = nil,
+        isSecureEnclaveKey: (String) -> Bool = { SecureEnclaveKeyDetector.isSecureEnclaveKey(identityFile: $0) }
+    ) throws -> [SSHHostSpec] {
         let hosts = try all()
         let byID = Dictionary(uniqueKeysWithValues: hosts.map { ($0.id, $0) })
         let sets = Dictionary(uniqueKeysWithValues: try credentialSets().map { ($0.id, $0) })
@@ -292,7 +295,8 @@ public actor HostRepository {
             return SSHHostSpec(
                 alias: HostProfile.managedAlias(for: h.id), hostName: h.hostName, port: h.port,
                 user: resolved.user, identityFile: resolved.identityFile, jumpAlias: jump,
-                identityAgent: resolved.identityAgent)
+                identityAgent: resolved.identityAgent,
+                usesSecureEnclaveProvider: resolved.identityFile.map(isSecureEnclaveKey) ?? false)
         }
     }
 

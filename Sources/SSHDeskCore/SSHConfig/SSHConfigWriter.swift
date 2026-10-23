@@ -13,11 +13,15 @@ public struct SSHHostSpec: Sendable, Equatable {
     public var identityAgent: String?
     /// Alias bastion do app sinh hoặc alias có sẵn trong config của người dùng.
     public var jumpAlias: String?
+    /// identityFile là khoá Secure Enclave (ADR-027): ghi `SecurityKeyProvider` trong Host block này.
+    public var usesSecureEnclaveProvider: Bool
 
     public init(
         alias: String, hostName: String, port: Int = 22, user: String,
-        identityFile: String? = nil, jumpAlias: String? = nil, identityAgent: String? = nil
+        identityFile: String? = nil, jumpAlias: String? = nil, identityAgent: String? = nil,
+        usesSecureEnclaveProvider: Bool = false
     ) {
+        self.usesSecureEnclaveProvider = usesSecureEnclaveProvider
         self.alias = alias
         self.hostName = hostName
         self.port = port
@@ -47,6 +51,8 @@ public enum SSHConfigError: Error, Equatable {
 
 /// Sinh file SSH config do app sở hữu (ADR-006). Thuần logic: không chạy ssh, không mạng.
 public enum SSHConfigWriter {
+    /// Đường dẫn cố định của provider SK của macOS (ADR-027); không nhận từ input người dùng.
+    public static let secureEnclaveProvider = "/usr/lib/ssh-keychain.dylib"
     public static let header = "# Do SSH Desk sinh — không sửa tay"
 
     public static func render(hosts: [SSHHostSpec], userConfigPath: String?) throws -> String {
@@ -71,6 +77,9 @@ public enum SSHConfigWriter {
             if let identityFile = host.identityFile {
                 lines.append("    IdentityFile \(quote(identityFile))")
                 lines.append("    IdentitiesOnly yes")
+                if host.usesSecureEnclaveProvider {
+                    lines.append("    SecurityKeyProvider \(quote(secureEnclaveProvider))")
+                }
             }
             if let agent = host.identityAgent {
                 lines.append("    IdentityAgent \(quote(agent))")

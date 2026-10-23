@@ -35,9 +35,10 @@ public final class PTYProcess: @unchecked Sendable {
     }
 
     /// `helper`: đường dẫn `sshdesk-ctty`; nil = tự tìm (`ControllingTTYHelper.defaultURL`).
+    /// `currentDirectory`: thư mục làm việc của con (nil = thừa kế).
     public static func start(
         executable: URL, arguments: [String], environment: [String: String],
-        helper: URL? = nil
+        helper: URL? = nil, currentDirectory: URL? = nil
     ) throws -> PTYProcess {
         let path = executable.path
         guard FileManager.default.isExecutableFile(atPath: path) else {
@@ -87,6 +88,15 @@ public final class PTYProcess: @unchecked Sendable {
         // Slave làm 0/1/2 cho helper; helper tự gán controlling tty. CLOEXEC_DEFAULT: con không
         // thừa kế bất kỳ fd nào ngoài 0/1/2.
         posix_spawn_file_actions_addopen(&fa, 0, nameBuf, O_RDWR, 0)
+        if let currentDirectory {
+            // Chạy sau addopen; helper và chương trình đích thừa kế cwd này.
+            let rc = posix_spawn_file_actions_addchdir_np(&fa, currentDirectory.path)
+            guard rc == 0 else {
+                close(masterFD)
+                close(slaveFD)
+                throw PTYProcessError.spawnFailed(rc)
+            }
+        }
         posix_spawn_file_actions_adddup2(&fa, 0, 1)
         posix_spawn_file_actions_adddup2(&fa, 0, 2)
         var allSignals = sigset_t()
