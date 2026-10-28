@@ -152,4 +152,26 @@ Dùng server của bạn (nên là server test, không phải PROD). Báo kết 
 5. **Qua xem trước:** thêm một dòng mới và đồng thời sửa IP một dòng khác: không tự thêm, hiện banner "Nguồn có thay đổi" và xem trước. Tương tự khi có dòng lỗi, thiếu `ansible_user` hoặc cột mật khẩu.
 6. **Toggle:** tắt "Tự thêm máy mới" rồi thêm dòng: qua xem trước.
 
+**K9 — Tự gõ mật khẩu vào Windows App (ADR-018b).** Cần `make install`, một máy Windows thật (không PROD), Windows App 11.4. Mới có test đơn vị; ghi lại kết quả, nhất là mục 3.
+1. **Chưa có quyền:** System Settings → Privacy & Security → Accessibility chưa bật SSH Desk. Mở Windows App cho máy có mật khẩu đã lưu: hiện hộp xin quyền + thông báo "lần này dùng clipboard"; mật khẩu được copy, dán bằng ⌘V đăng nhập được.
+2. **Cấp quyền:** bật SSH Desk trong Accessibility, thoát và mở lại app nếu macOS yêu cầu.
+3. **Tự gõ:** Mở lại: app chờ tới khi ô mật khẩu hiện, gõ mật khẩu và Return, đăng nhập được. Ghi lại: ô có đúng là `AXSecureTextField` không (nếu không, app chờ 30 giây rồi dùng clipboard), Windows App có nhận phím không, tiếng Việt/ký tự đặc biệt trong mật khẩu gõ đúng không. Clipboard **không** bị đặt khi đã gõ thành công (kiểm bằng ⌘V ở nơi khác).
+4. **Hết 30 giây:** mở rồi không để Windows App ra ô mật khẩu (vd chuyển sang app khác): sau 30 giây có thông báo và rơi về clipboard.
+5. **Cửa sổ đổi giữa chừng:** trong lúc đang gõ, bấm sang app khác: gõ dừng, báo xoá ô và nhập lại, không copy clipboard, không có ký tự nào rơi vào app khác.
+6. **Mở lại khi đang gõ:** bấm Mở lần nữa giữa lúc gõ: lần cũ bị huỷ; ghi lại ô có còn nửa mật khẩu không (đã biết, A21).
+7. **Cài đặt:** tắt "Tự gõ mật khẩu vào Windows App" → chỉ copy clipboard. Tắt "Tự điền mật khẩu đã lưu" → không gõ, không copy. Máy đang bị hold (tạm tắt tự điền): ghi lại hành vi.
+8. **Máy SSH:** Mở Warp không bao giờ gõ hay xin quyền Trợ năng.
+9. **Build lại:** `make install` ký ad-hoc rồi mở Windows App: ghi lại macOS có đòi cấp lại quyền không; thử lại với chứng chỉ ADR-023.
+10. **Không lộ:** mật khẩu không có trong log, DB, `.rdp`.
+
+**K10 — Hộp thoại Keychain và "Làm mới quyền Keychain" (ADR-004d).** Cần `make install`, đã có vài mật khẩu lưu (host và bộ đăng nhập). Ghi lại số hộp thoại thấy được ở từng bước.
+1. **Không hỏi khi vẽ:** nhập mật khẩu lần đầu cho một máy rồi chọn máy, chuyển qua lại chi tiết máy và danh sách nhiều lần: không có hộp thoại Keychain hiện thêm khi chỉ xem (chỉ có khi thật sự kết nối).
+2. **Một thao tác, tối đa một lần đọc khoá:** lưu hoặc dùng một mật khẩu: không còn 2 hộp thoại liên tiếp cho cùng một thao tác.
+3. **Sau `make install` ký ad-hoc:** mở Warp một máy có mật khẩu lưu: có thể hỏi lại một lần (app 1, helper 1–2); ghi lại số lần. Chọn "Luôn cho phép".
+4. **Làm mới quyền:** Cài đặt → Bảo mật → "Làm mới quyền Keychain": đọc mô tả, bấm; chọn "Luôn cho phép" ở các hộp thoại. Báo số mục đã làm mới / lỗi. Sau đó build + cài lại bằng chứng chỉ (K1) và mở Warp: không hỏi lại.
+5. **Từ chối:** lặp lại bước 4 và bấm "Từ chối" ở một hộp thoại: ghi lại mục đó có thành "Mật khẩu đã lưu không còn dùng được" không (dự kiến có thể), nhập lại thì dùng được; các mục khác không hỏng, khoá không mất.
+6. **Không tự làm mới:** khởi động lại app không tự bật chuỗi hộp thoại làm mới.
+7. **Khôi phục khoá:** (chỉ khi thử được) ngắt giữa lúc làm mới (thoát app): lần mở sau mật khẩu vẫn dùng được (khôi phục từ `default-refresh` nếu cần). Trong Keychain Access không còn item tạm sau khi xong.
+8. **Không lộ:** không có mật khẩu trong log/DB.
+
 **Ghi chú tạo khoá Secure Enclave (K5):** `ssh-keygen -w /usr/lib/ssh-keychain.dylib -K` đang báo "Unable to load resident keys: invalid format" trên máy dev (2026-10-23), nên test e2e SE bỏ qua lỗi này và luồng "Tạo khoá Secure Enclave…" trong app cần thử tay.

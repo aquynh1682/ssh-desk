@@ -90,7 +90,7 @@ Trong hub "Nguồn máy chủ…", menu "Thêm nguồn" có Excel/CSV, JSON, Ans
 - **Port forward (-L):** lưu danh sách forward theo host, Mở/Dừng tunnel riêng, hiển thị trạng thái.
 - **Project Analyst:** quét một thư mục server (Linux), dựng bản đồ kết nối giữa các server, thử kết nối TCP, lưu lịch sử, xuất báo cáo Markdown/CSV.
 - **Monitor:** lưới thẻ CPU / RAM / swap / đĩa / load / uptime theo thư mục (Linux). Mỗi thư mục chọn nguồn: SSH (mặc định) hoặc Prometheus/Zabbix (mục dưới).
-- **Máy Windows:** khai báo host RDP, mở bằng Windows App qua file `.rdp`; tuỳ chọn copy mật khẩu lên clipboard khi mở (tự xoá).
+- **Máy Windows:** khai báo host RDP, mở bằng Windows App qua file `.rdp`; tự gõ mật khẩu đã lưu vào ô đăng nhập (cần quyền Trợ năng, mục dưới), không được thì copy lên clipboard (tự xoá).
 - **CLI `sshdesk` + liên kết `sshdesk://`:** liệt kê và mở host từ terminal, Alfred, Raycast (mục bên dưới). Chưa thử tay.
 - **Nguồn máy chủ:** nhập và đồng bộ một chiều từ Excel/CSV (có file mẫu), JSON, Ansible inventory tĩnh (mục trên).
 - **Xuất / nhập:** danh sách máy chủ ra file JSON `*.sshdesk.json` (không có secret) và nhập lại có xem trước.
@@ -105,6 +105,15 @@ Mở máy SSH dùng mật khẩu mà chưa lưu thì app hiện sheet "Nhập m�
 - **Không tích lưu:** mở Warp thì app không giữ mật khẩu, bạn gõ trong terminal. Analyst, Monitor, Truyền file (sheet Tải về/Tải lên) giữ mật khẩu trong bộ nhớ app tới khi đóng phiên, không ghi ra đâu; đổi địa chỉ máy thì bỏ mục tạm.
 - **Máy Windows:** sheet có ô "Lưu vào Keychain"; không kiểm tra được; mật khẩu copy lên clipboard như mục Windows (không tích thì copy một lần, không lưu).
 - Mới có test đơn vị và ssh giả, **chưa thử với server thật** (xem [TESTING](docs/TESTING.md) K4c).
+
+### Máy Windows: tự gõ mật khẩu (ADR-018b)
+Mới có test đơn vị, **chưa kiểm chứng** với Windows App 11.4 (có dùng ô mật khẩu `AXSecureTextField` và nhận phím gửi theo pid không), xem [KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md) A21/B18.
+- **Cấp quyền (một lần):** System Settings → Privacy & Security → Accessibility → bật SSH Desk. Lần Mở đầu tiên chưa có quyền, app hỏi quyền và lần đó dùng clipboard.
+- **Cách chạy:** bấm Mở Windows App cho máy có mật khẩu đã lưu: app mở `.rdp`, chờ tối đa 30 giây tới khi Windows App đang ở trước và con trỏ nằm trong ô mật khẩu còn trống, rồi gõ mật khẩu (chỉ gửi tới Windows App) và Return. Chỉ gõ một lần mỗi lần bấm Mở.
+- **Bật/tắt:** Cài đặt → Bảo mật → "Tự gõ mật khẩu vào Windows App" (mặc định bật). Tắt "Tự điền mật khẩu đã lưu" thì không gõ cũng không copy.
+- **Fallback clipboard:** chưa có quyền, hết 30 giây không thấy ô mật khẩu, hoặc tắt tính năng: mật khẩu được copy như trước (concealed, tự xoá), bạn dán bằng ⌘V.
+- **Gõ dở:** nếu cửa sổ đổi giữa chừng, app dừng và báo; hãy xoá ô mật khẩu rồi nhập lại. Không gõ vào app nào khác ngoài Windows App, và không bao giờ cho máy SSH.
+- Ký ad-hoc có thể làm macOS đòi cấp lại quyền sau mỗi lần `make install`: ký bằng chứng chỉ (mục "Ký app bằng chứng chỉ của bạn").
 
 ### Monitor từ Prometheus/Zabbix (ADR-028)
 Ngoài cách mặc định (SSH vào máy đọc `/proc`), Monitor có thể đọc số liệu từ hệ thống giám sát có sẵn. Chỉ gọi API đọc, không chạy lệnh trên server.
@@ -198,6 +207,7 @@ App **không** sửa `~/.ssh/config` hay Tab Config của bạn; chỉ ghi file 
 - Lần đầu mở bản mới, app tự chuyển mật khẩu cũ (item `local.sshdesk.credentials`) sang dạng mã hoá, kiểm tra đọc lại khớp rồi mới xoá item cũ. Chưa thử trên máy thật.
 - **Đổi máy, cài lại macOS hoặc khôi phục backup sang máy khác thì mất mật khẩu đã lưu** (khoá gắn với máy, không có backup/xuất): phải nhập lại. Mục không giải mã được hiện "Mật khẩu đã lưu không còn dùng được trên máy này"; nhập lại sẽ ghi đè.
 - Máy không có Secure Enclave thì không lưu được mật khẩu (không bao giờ lưu plaintext). Giới hạn: [KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md) mục A17.
+- **Hộp thoại Keychain cứ hiện lại (ADR-004d):** sau mỗi `make install` bản ký ad-hoc, macOS có thể hỏi quyền lại. Cách xử lý: (1) nên ký bằng chứng chỉ ổn định (ADR-023, mục "Ký app bằng chứng chỉ của bạn"); (2) vào Cài đặt → Bảo mật → bấm **"Làm mới quyền Keychain"** một lần; (3) mỗi hộp thoại chọn **"Luôn cho phép"** (đừng chọn "Cho phép" hay "Từ chối": "Từ chối" có thể làm mục đó không đọc được, phải nhập lại mật khẩu). App không tự làm mới khi khởi động. Chưa thử thật trên máy (xem [KNOWN_LIMITATIONS](docs/KNOWN_LIMITATIONS.md) A20/B18).
 
 ## Bảo mật (tóm tắt)
 - Password/passphrase/OTP không vào file, SQLite, log, argv, env, URI, export. Chỉ Keychain. Ngoại lệ có chủ đích: copy mật khẩu máy Windows lên clipboard (đánh dấu concealed/transient, tự xoá).

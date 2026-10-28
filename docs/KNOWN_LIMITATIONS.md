@@ -122,6 +122,23 @@ Gom từ mục "Rủi ro chấp nhận" và "Chưa kiểm chứng" trong [archit
 - **Phụ thuộc file hệ thống** `/usr/lib/ssh-keychain.dylib` và `sc_auth`; thiếu thì mục này ẩn.
 - **ADR:** 027.
 
+### A20. Hộp thoại Keychain và "Làm mới quyền Keychain" (ADR-004d)
+- **Ký ad-hoc vẫn hỏi lại sau mỗi `make install`:** chữ ký đổi mỗi lần build nên ACL Keychain không khớp; lần dùng đầu sau mỗi lần cài có thể hỏi lại (app 1 lần, helper askpass 1–2 lần). **Tránh:** ký bằng chứng chỉ ổn định (ADR-023, xem README) rồi bấm "Làm mới quyền Keychain" một lần, chọn "Luôn cho phép".
+- **Làm mới có thể làm mất mục nếu bấm "Từ chối":** nút ghi lại blob khoá và các ciphertext để ACL mang chữ ký hiện tại. Nếu ở hộp thoại bạn bấm "Từ chối", mục đó không đọc được nên không làm mới được và có thể mất (hiện "không còn dùng được"). **Làm:** nhập lại mật khẩu của mục đó. Với blob khoá, app ghi bản sao `default-refresh` trước và giữ bản còn đọc được khi lỗi giữa chừng (thiết kế, chưa thử thật).
+- **Không tự làm mới khi khởi động** (tránh dồn hàng loạt hộp thoại): phải tự bấm nút.
+- Trạng thái "cần nhập lại" trong form chỉ cập nhật sau một lần đọc thật (kết nối, kiểm tra trước khi lưu, migration), không phải lúc vẽ màn hình.
+- **ADR:** 004d, 023.
+
+### A21. Tự gõ mật khẩu vào Windows App (ADR-018b)
+- **Quyền Trợ năng là quyền rộng:** cấp cho SSH Desk nghĩa là app có thể điều khiển phím/UI của app khác trên Mac. Do bạn chủ động cấp; app chỉ gõ vào đúng pid Windows App.
+- **Ký ad-hoc có thể bị đòi cấp lại quyền sau mỗi lần `make install`** (chữ ký đổi). **Tránh:** ký chứng chỉ ADR-023.
+- **Focus đổi trong chính Windows App:** vài trăm ms giữa lần kiểm và lần gõ, focus có thể chuyển sang ô khác trong cùng Windows App; mật khẩu có thể vào nhầm ô đó.
+- **Bấm Mở lại khi đang gõ dở:** lần gõ cũ bị huỷ nhưng có thể để nửa mật khẩu trong ô. App không xoá được ô (không biết đã gõ bao nhiêu); báo bạn xoá ô và nhập lại.
+- **Mất điều kiện giữa chừng** (cửa sổ đổi, mất ô mật khẩu): dừng gõ, không rơi về clipboard; báo xoá ô và nhập lại.
+- **Host đang bị hold (tạm tắt tự điền) chờ 30 giây không chặn lần gõ đó:** hold chỉ áp cho lần mở sau, lần gõ đang chờ vẫn chạy (rủi ro chấp nhận theo yêu cầu PM; ADR chưa mô tả rõ).
+- Không có quyền, hết 30 giây không thấy ô mật khẩu, hoặc tắt "Tự gõ mật khẩu vào Windows App": rơi về clipboard (A3).
+- Chưa kiểm chứng Windows App 11.4 (B18). **ADR:** 018b, 018.
+
 ## B. Chưa kiểm chứng (với hệ thống thật)
 
 ### B1. Truyền file với server thật
@@ -212,3 +229,9 @@ Chỉ có test đơn vị; **chưa thử** end-to-end. Kịch bản: TESTING m�
 - **Cảnh báo nào cũng chặn tự thêm** (vd thiếu `ansible_user`, cột mật khẩu bị bỏ, bộ đăng nhập cần tạo), nên các lần đó phải qua xem trước.
 - Tự thêm không bao giờ lưu mật khẩu.
 - **ADR:** 026b.
+
+### B18. Tự gõ mật khẩu Windows App và làm mới quyền Keychain (ADR-018b, 004d)
+Chỉ có test đơn vị (quyết định thuần, chia đoạn, storage giả); **chưa thử trên `.app` đã cài**. Kịch bản: TESTING mục K9 (Windows) và K10 (Keychain).
+- **Chưa kiểm chứng:** hộp thoại đăng nhập của Windows App 11.4 có dùng `AXSecureTextField` không, và có nhận `CGEvent` gửi theo pid (`postToPid`) không. Nếu không, tính năng luôn rơi về clipboard sau 30 giây.
+- **Chưa kiểm chứng:** hộp thoại Keychain thực sự hết lặp sau sửa ADR-004d; luồng "Làm mới quyền Keychain" với ACL thật (chọn "Luôn cho phép", "Từ chối", lỗi giữa chừng).
+- **ADR:** 018b, 004d.
