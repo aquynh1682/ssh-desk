@@ -212,7 +212,9 @@ final class AppModel {
                 userConfigPath: nil, launcher: WarpLauncher(),
                 credentials: credentials, secretClipboard: secretClipboard,
                 askpassHelper: AskpassHelper.defaultURL(), settings: settingsStore,
-                metricSources: metricService)
+                metricSources: metricService,
+                windowsAutotyper: WindowsPasswordAutotyper(
+                    probe: SystemWindowsAutotypeProbe(), typer: SystemWindowsKeyTyper()))
             self.service = service
             hostRepository = repo
             passwordEntry = PasswordEntryService(
@@ -457,13 +459,14 @@ final class AppModel {
     /// Mật khẩu hiệu lực đã lưu nhưng không giải mã được (khoá SE mất/đổi máy) → cần nhập lại (ADR-004c).
     func needsReauth(_ host: HostProfile) -> Bool {
         guard let ref = host.effectiveCredentialReference else { return false }
-        return credentials.status(ref: ref) == .undecryptable
+        // Chỉ đọc trạng thái đã nhớ (ADR-004d): vẽ View không bao giờ được giải mã / chạm Keychain.
+        return credentials.cachedStatus(ref: ref) == .undecryptable
     }
 
     /// Bộ đăng nhập có password/passphrase không giải mã được.
     func setNeedsReauth(_ id: UUID) -> Bool {
         [CredentialSet.passwordReference(for: id), CredentialSet.passphraseReference(for: id)]
-            .contains { credentials.status(ref: $0) == .undecryptable }
+            .contains { credentials.cachedStatus(ref: $0) == .undecryptable }
     }
 
     /// Host có mật khẩu RIÊNG trong Keychain (form dùng để xoá/giữ mật khẩu riêng).
@@ -602,19 +605,21 @@ final class AppModel {
         if case .cancelled = answer { return }
         let host = hosts.first(where: { $0.id == original.id }) ?? original
         banner = nil
-        let report = await service.openInWindowsAppReport(host)
+        let report = await service.openInWindowsAppReport(host, autotypeCompletion: autotypeCompletion())
         switch report.result {
         case .requested:
-            // Không tích lưu (ADR-029/018): copy MỘT lần, tự xoá; password không được lưu ở đâu.
+            // Không tích lưu (ADR-029/018/018b): tự gõ hoặc copy MỘT lần, tự xoá; password không được lưu ở đâu.
             if case .windowsCopy(let password) = answer {
-                secretClipboard.copy(password, clearAfter: TimeInterval(settings.clipboardClearSeconds))
-                showToast(passwordCopiedToast)
+                let delivered = await service.deliverWindowsPassword(
+                    password, completion: autotypeCompletion())
+                showToast(delivered == .autotyping ? autotypingToast : passwordCopiedToast)
                 await reload()
                 return
             }
             switch report.passwordCopy {
             case .none: showToast("Đã yêu cầu Windows App mở kết nối — nhập mật khẩu trong Windows App")
             case .copied: showToast(passwordCopiedToast)
+            case .autotyping: showToast(autotypingToast)
             case .disabled:
                 showToast("Đã mở Windows App — đang tắt tự điền mật khẩu (Cài đặt), nhập mật khẩu trong Windows App")
             case .held:
@@ -628,6 +633,27 @@ final class AppModel {
             banner = Banner(text: "Chưa cài Windows App.", copyHostID: nil, showsAppStoreLink: true)
         case .failed(let reason):
             alert = AppAlert(title: "Không mở được Windows App", message: reason)
+        }
+    }
+
+    var autotypingToast: String {
+        "Đã mở Windows App — sẽ tự gõ mật khẩu khi hiện ô đăng nhập (chờ tối đa 30 giây)."
+    }
+
+    /// Kết quả của lần chờ tự gõ (ADR-018b), gọi từ nền → chuyển về luồng chính. Dừng giữa chừng dùng hộp thoại
+    /// (người dùng phải xoá ô mật khẩu), còn lại dùng toast.
+    private func autotypeCompletion() -> @Sendable (WindowsAutotypeOutcome) -> Void {
+        { [weak self] outcome in
+            Task { @MainActor in self?.finishAutotype(outcome) }
+        }
+    }
+
+    private func finishAutotype(_ outcome: WindowsAutotypeOutcome) {
+        guard let text = outcome.message(clearSeconds: settings.clipboardClearSeconds) else { return }
+        if case .aborted = outcome {
+            alert = AppAlert(title: "Đã dừng tự gõ mật khẩu", message: text)
+        } else {
+            showToast(text)
         }
     }
 
@@ -910,6 +936,28 @@ final class AppModel {
                 showToast("Đã xoá \(removed) mật khẩu đã lưu")
             }
         } catch { show(error, title: "Không xoá được mật khẩu") }
+    }
+
+    /// Nút "Làm mới quyền Keychain" (ADR-004d): người dùng chủ động bấm, không tự chạy khi khởi động.
+    func refreshKeychainAccess() async {
+        guard let hostRepository else { return }
+        guard
+            let r = await CredentialMigration.refreshAccess(
+                store: sealedStore, repository: hostRepository, metricSources: metricSources?.repository)
+        else {
+            alert = AppAlert(
+                title: "Chưa làm mới được quyền Keychain", message: "Không đọc được danh sách mật khẩu.")
+            return
+        }
+        let keyFailed = r.key == .failed
+        if r.failed > 0 || keyFailed {
+            let keyNote = keyFailed ? " Khoá Secure Enclave chưa làm mới được (vẫn còn nguyên, không mất)." : ""
+            alert = AppAlert(
+                title: "Làm mới quyền Keychain chưa hoàn tất",
+                message: "Đã làm mới \(r.refreshed) mục; \(r.failed) mục lỗi.\(keyNote) Thử lại sau.")
+        } else {
+            showToast("Đã làm mới quyền Keychain cho \(r.refreshed) mục")
+        }
     }
 
     func revealSSHConfigFolder() {

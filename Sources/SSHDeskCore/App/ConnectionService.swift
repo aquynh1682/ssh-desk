@@ -27,6 +27,8 @@ public enum PasswordCopyOutcome: Sendable, Equatable {
     /// Không có mật khẩu lưu (hoặc không áp dụng): không làm gì.
     case none
     case copied
+    /// Đã mở và đang chờ ô mật khẩu của Windows App để tự gõ (ADR-018b); kết quả báo qua `completion`.
+    case autotyping
     /// Cài đặt "tự điền mật khẩu đã lưu" đang tắt: không copy (ADR-021).
     case disabled
     /// Host đang bị hold tự điền (ADR-026/030): không copy cho tới khi người dùng xác nhận.
@@ -66,6 +68,9 @@ public actor ConnectionService {
     private let secretClipboard: SecretClipboard?
     private let askpassHelper: URL?
     private let metricSources: MetricSourceService?
+    private let windowsAutotyper: WindowsPasswordAutotyper?
+    /// Lần chờ tự gõ đang chạy (ADR-018b); huỷ khi bấm Mở lần nữa.
+    private var autotypeTask: Task<Void, Never>?
     private let now: @Sendable () -> Date
 
     /// `userConfigPath`: nil = không `Include`. Chỉ truyền đường dẫn file đang tồn tại
@@ -77,8 +82,10 @@ public actor ConnectionService {
         credentials: (any CredentialStore)? = nil, secretClipboard: SecretClipboard? = nil,
         askpassHelper: URL? = nil, settings: SettingsStore? = nil,
         metricSources: MetricSourceService? = nil,
+        windowsAutotyper: WindowsPasswordAutotyper? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
+        self.windowsAutotyper = windowsAutotyper
         self.settings = settings
         self.credentials = credentials
         self.secretClipboard = secretClipboard
@@ -470,37 +477,97 @@ public actor ConnectionService {
         await openInWindowsAppReport(host).result
     }
 
-    /// Như `openInWindowsApp`; khi `.requested` và host có mật khẩu lưu thì copy mật khẩu lên clipboard
-    /// (đọc Keychain tại đây, không đi qua view). Chỉ máy Windows, đúng một lần mỗi lần mở.
-    public func openInWindowsAppReport(_ host: HostProfile) async -> WindowsOpenReport {
+    /// Như `openInWindowsApp`; khi `.requested` và host có mật khẩu lưu thì đưa mật khẩu cho người dùng
+    /// (đọc Keychain tại đây, không đi qua view): tự gõ nếu bật và có quyền Trợ năng (ADR-018b, kết quả báo qua
+    /// `autotypeCompletion`), không thì copy lên clipboard (ADR-018). Chỉ máy Windows, đúng một lần mỗi lần mở.
+    public func openInWindowsAppReport(
+        _ host: HostProfile, autotypeCompletion: (@Sendable (WindowsAutotypeOutcome) -> Void)? = nil
+    ) async -> WindowsOpenReport {
         guard host.kind == .windowsRDP else {
             return WindowsOpenReport(result: .failed("Đây không phải máy Windows."), passwordCopy: .none)
         }
+        cancelAutotype()  // lần mở mới huỷ lần chờ trước
         let result = await rdpLauncher.launch(host)
         guard result == .requested else { return WindowsOpenReport(result: result, passwordCopy: .none) }
         do { try await repository.markLaunchRequested(id: host.id, at: now()) } catch {
             return WindowsOpenReport(result: .failed("\(error)"), passwordCopy: .none)
         }
-        return WindowsOpenReport(result: result, passwordCopy: await copyStoredWindowsPassword(host))
+        switch await lookupWindowsPassword(host) {
+        case .unavailable(let outcome):
+            return WindowsOpenReport(result: result, passwordCopy: outcome)
+        case .password(let password):
+            let delivered = deliverWindowsPassword(password, completion: autotypeCompletion)
+            return WindowsOpenReport(result: result, passwordCopy: delivered)
+        }
+    }
+
+    /// Đưa mật khẩu cho Windows App: tự gõ khi có bộ tự gõ + "Tự gõ mật khẩu" bật + "Tự điền mật khẩu đã lưu" bật
+    /// (trả `.autotyping`, kết quả qua `completion`), không thì copy ngay (`.copied`, hành vi ADR-018/029).
+    /// Trong lúc chờ/gõ, tắt "Tự điền" → dừng (không gõ tiếp, không copy). Hold của host chỉ được kiểm lúc tra
+    /// mật khẩu đã lưu (`lookupWindowsPassword`); vòng chờ đồng bộ không đọc lại DB. Huỷ lần chờ trước.
+    @discardableResult
+    public func deliverWindowsPassword(
+        _ password: String, completion: (@Sendable (WindowsAutotypeOutcome) -> Void)? = nil
+    ) -> PasswordCopyOutcome {
+        cancelAutotype()
+        let clearAfter = TimeInterval(settings?.current.clipboardClearSeconds ?? 30)
+        guard let secretClipboard else { return .none }
+        let autofillOn = settings?.current.autofillEnabled ?? true
+        guard let autotyper = windowsAutotyper, autofillOn, settings?.current.windowsAutotypePassword ?? true
+        else {
+            secretClipboard.copy(password, clearAfter: clearAfter)
+            return .copied
+        }
+        let settings = self.settings
+        autotypeTask = Task {
+            let outcome = await autotyper.run(
+                password: password, autofillEnabled: true, autotypeEnabled: true,
+                stillAllowed: { settings?.current.autofillEnabled ?? true })
+            // Bị huỷ (bấm Mở lần nữa): lần mới tự lo, không copy, không báo.
+            if outcome == .cancelled || Task.isCancelled { return }
+            if case .fallbackClipboard = outcome { secretClipboard.copy(password, clearAfter: clearAfter) }
+            completion?(outcome)
+        }
+        return .autotyping
+    }
+
+    /// Huỷ lần chờ tự gõ đang chạy (nếu có).
+    public func cancelAutotype() {
+        autotypeTask?.cancel()
+        autotypeTask = nil
+    }
+
+    private enum WindowsPasswordLookup {
+        case password(String)
+        case unavailable(PasswordCopyOutcome)
+    }
+
+    /// Mật khẩu đã lưu của máy Windows nếu được phép dùng (tự điền bật, không hold, đọc được).
+    private func lookupWindowsPassword(_ host: HostProfile) async -> WindowsPasswordLookup {
+        guard host.kind == .windowsRDP else { return .unavailable(.failed("Đây không phải máy Windows.")) }
+        guard let credentials, secretClipboard != nil else { return .unavailable(.none) }
+        if let current = settings?.current, !current.autofillEnabled { return .unavailable(.disabled) }
+        // Đọc lại host: bộ đăng nhập và hold có thể đã đổi từ lúc UI nạp.
+        let fresh = (try? await repository.host(id: host.id)) ?? host
+        if fresh.autofillHold, fresh.effectiveCredentialReference != nil { return .unavailable(.held) }
+        guard let ref = fresh.autofillCredentialReference else { return .unavailable(.none) }
+        guard let password = credentials.read(ref: ref) else {
+            return .unavailable(
+                credentials.exists(ref: ref) ? .failed("Không đọc được mật khẩu từ Keychain.") : .none)
+        }
+        return .password(password)
     }
 
     /// Copy mật khẩu đã lưu của máy Windows lên clipboard (tự xoá sau 30 giây). Host SSH: `.failed`.
+    /// Luôn là clipboard (menu "Copy mật khẩu"), không tự gõ.
     public func copyStoredWindowsPassword(_ host: HostProfile) async -> PasswordCopyOutcome {
-        guard host.kind == .windowsRDP else { return .failed("Đây không phải máy Windows.") }
-        guard let credentials, let secretClipboard else { return .none }
-        let current = settings?.current
-        if let current, !current.autofillEnabled { return .disabled }
-        // Đọc lại host: bộ đăng nhập và hold có thể đã đổi từ lúc UI nạp.
-        let fresh = (try? await repository.host(id: host.id)) ?? host
-        if fresh.autofillHold, fresh.effectiveCredentialReference != nil { return .held }
-        guard let ref = fresh.autofillCredentialReference else { return .none }
-        guard let password = credentials.read(ref: ref) else {
-            return credentials.exists(ref: ref)
-                ? .failed("Không đọc được mật khẩu từ Keychain.") : .none
+        switch await lookupWindowsPassword(host) {
+        case .unavailable(let outcome): return outcome
+        case .password(let password):
+            secretClipboard?.copy(
+                password, clearAfter: TimeInterval(settings?.current.clipboardClearSeconds ?? 30))
+            return .copied
         }
-        secretClipboard.copy(
-            password, clearAfter: TimeInterval(current?.clipboardClearSeconds ?? 30))
-        return .copied
     }
 
     /// Ghi file .rdp (không mở app) để hiện trong Finder.

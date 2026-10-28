@@ -70,6 +70,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <!-- ADR-018b: lý do xin quyền Trợ năng để tự gõ mật khẩu vào Windows App (AX không bắt buộc khoá này). -->
+    <key>NSAccessibilityUsageDescription</key>
+    <string>SSH Desk dùng quyền Trợ năng để tự gõ mật khẩu đã lưu vào ô đăng nhập của Windows App.</string>
     <!-- URL scheme sshdesk:// (ADR-025). App chỉ nhận open?id|name và cli?request, luôn qua kiểm tra trong Core. -->
     <key>CFBundleURLTypes</key>
     <array>

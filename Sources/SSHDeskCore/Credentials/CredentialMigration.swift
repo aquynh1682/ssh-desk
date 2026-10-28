@@ -54,4 +54,20 @@ public enum CredentialMigration {
         if report.failed == 0 { try? settings.setFlag(flagKey) }
         return report
     }
+
+    /// "Làm mới quyền Keychain" (ADR-004d): đọc mọi tham chiếu trong DB rồi ghi lại khoá + ciphertext với ACL
+    /// hiện tại. Chạy ngoài luồng gọi vì macOS có thể hiện hộp thoại cho từng mục. nil nếu không đọc được DB.
+    public static func refreshAccess(
+        store: SecureEnclaveCredentialStore, repository: HostRepository,
+        metricSources: MetricSourceRepository? = nil
+    ) async -> SealedRefreshReport? {
+        let refs: [String]
+        do {
+            let hosts = try await repository.all()
+            let sets = try await repository.credentialSets()
+            let metrics = try (metricSources?.all() ?? [])
+            refs = references(hosts: hosts, sets: sets, metricSources: metrics)
+        } catch { return nil }
+        return await Task.detached(priority: .userInitiated) { store.refreshAccess(refs: refs) }.value
+    }
 }

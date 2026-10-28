@@ -81,4 +81,5 @@ public struct AutofillGatedCredentialStore: CredentialStore {
     public func delete(ref: String) throws { try base.delete(ref: ref) }
     public func exists(ref: String) -> Bool { base.exists(ref: ref) }
     public func status(ref: String) -> CredentialStatus { base.status(ref: ref) }
+    public func cachedStatus(ref: String) -> CredentialStatus? { base.cachedStatus(ref: ref) }
 }

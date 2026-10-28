@@ -37,6 +37,8 @@ public struct AppSettings: Equatable, Sendable {
     /// Hỏi mật khẩu khi máy chưa lưu (ADR-029). Chỉ có tác dụng khi `autofillEnabled` bật.
     public var promptMissingPassword = true
     public var clipboardClearSeconds = AppSettings.defaultClipboardSeconds
+    /// Tự gõ mật khẩu vào Windows App bằng Trợ năng (ADR-018b). Tắt = chỉ copy clipboard như ADR-018.
+    public var windowsAutotypePassword = true
     // MARK: Project Analyst
     public var analystRetention = AppSettings.defaultAnalystRetention
     public var analystProbeTimeout = ProbeTimeout.default
@@ -77,6 +79,7 @@ public struct AppSettings: Equatable, Sendable {
         static let autofillEnabled = "security.autofill_enabled"
         static let promptMissingPassword = "security.prompt_missing_password"
         static let clipboardClearSeconds = "security.clipboard_clear_seconds"
+        static let windowsAutotypePassword = "windows.autotype_password"
         static let analystRetention = "analyst.retention"
         static let analystProbeTimeout = "analyst.probe_timeout"
         static let monitorInterval = "monitor.interval"
@@ -115,6 +118,7 @@ public struct AppSettings: Equatable, Sendable {
         promptMissingPassword = bool(Key.promptMissingPassword, true)
         clipboardClearSeconds = choice(
             Key.clipboardClearSeconds, Self.clipboardChoices, Self.defaultClipboardSeconds)
+        windowsAutotypePassword = bool(Key.windowsAutotypePassword, true)
         analystRetention = Self.clamp(
             int(Key.analystRetention), Self.analystRetentionRange, Self.defaultAnalystRetention)
         analystProbeTimeout = int(Key.analystProbeTimeout).map(ProbeTimeout.init) ?? .default
@@ -142,6 +146,7 @@ public struct AppSettings: Equatable, Sendable {
             Key.autofillEnabled: s.autofillEnabled ? "1" : "0",
             Key.promptMissingPassword: s.promptMissingPassword ? "1" : "0",
             Key.clipboardClearSeconds: String(s.clipboardClearSeconds),
+            Key.windowsAutotypePassword: s.windowsAutotypePassword ? "1" : "0",
             Key.analystRetention: String(s.analystRetention),
             Key.analystProbeTimeout: String(s.analystProbeTimeout.seconds),
             Key.monitorInterval: String(s.monitorIntervalSeconds),
@@ -168,6 +173,7 @@ public struct AppSettings: Equatable, Sendable {
             Key.autofillEnabled: autofillEnabled ? "1" : "0",
             Key.promptMissingPassword: promptMissingPassword ? "1" : "0",
             Key.clipboardClearSeconds: String(clipboardClearSeconds),
+            Key.windowsAutotypePassword: windowsAutotypePassword ? "1" : "0",
             Key.analystRetention: String(analystRetention),
             Key.analystProbeTimeout: String(analystProbeTimeout.seconds),
             Key.monitorInterval: String(monitorIntervalSeconds),

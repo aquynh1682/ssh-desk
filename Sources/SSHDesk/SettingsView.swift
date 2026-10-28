@@ -252,6 +252,14 @@ struct SettingsView: View {
                 Toggle("", isOn: bind(\.promptMissingPassword)).labelsHidden().toggleStyle(.switch)
                     .disabled(!s.autofillEnabled)
             }
+            SettingsRow(
+                "Tự gõ mật khẩu vào Windows App",
+                hint:
+                    "Bật: khi mở máy Windows có mật khẩu lưu, SSH Desk chờ ô mật khẩu của Windows App (tối đa 30 giây) rồi tự gõ — cần cấp quyền Trợ năng trong Cài đặt hệ thống. Chưa có quyền hoặc hết giờ thì dùng clipboard. Tắt: chỉ copy mật khẩu để bạn dán. Vẫn chịu “Tự điền mật khẩu đã lưu”."
+            ) {
+                Toggle("", isOn: bind(\.windowsAutotypePassword)).labelsHidden().toggleStyle(.switch)
+                    .disabled(!s.autofillEnabled)
+            }
             SettingsRow("Tự xoá clipboard mật khẩu Windows sau") {
                 Picker("", selection: bind(\.clipboardClearSeconds)) {
                     ForEach(AppSettings.clipboardChoices, id: \.self) { Text("\($0) giây").tag($0) }
@@ -259,6 +267,15 @@ struct SettingsView: View {
                 .labelsHidden().frame(width: 110)
             }
             CredentialSetsSection(model: model)
+            SettingsRow(
+                "Quyền truy cập Keychain",
+                hint:
+                    "Dùng khi macOS cứ hỏi quyền Keychain sau khi cài lại app. Mỗi mục có thể hiện một hộp thoại: hãy chọn “Luôn cho phép”. Không ghi lại gì ngoài việc làm mới quyền; mật khẩu không bị đọc ra."
+            ) {
+                Button("Làm mới quyền Keychain") {
+                    Task { await model.refreshKeychainAccess() }
+                }
+            }
             SettingsRow("Mật khẩu đã lưu trong Keychain") {
                 Button("Xoá mọi mật khẩu đã lưu…", role: .destructive) {
                     Task {

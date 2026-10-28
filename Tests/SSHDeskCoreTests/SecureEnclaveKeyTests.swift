@@ -509,6 +509,7 @@ extension ProcessGroup {
             let ref = "set-\(UUID().uuidString.lowercased())"
             defer {
                 try? keyKC.delete(account: SecureEnclaveBackend.keyAccount)
+                try? keyKC.delete(account: SecureEnclaveBackend.keyRefreshAccount)
                 try? sealedKC.delete(account: ref)
                 try? legacyKC.delete(account: ref)
                 try? sealedKC.delete(account: "mig")
@@ -531,9 +532,12 @@ extension ProcessGroup {
             #expect(backend.read(account: "mig") == "legacy-pw")
             // Mất blob khoá -> undecryptable.
             try keyKC.delete(account: SecureEnclaveBackend.keyAccount)
-            #expect(backend.status(account: ref) == .undecryptable)
-            try backend.save(account: ref, secret: "again")
-            #expect(backend.read(account: ref) == "again")
+            // Tiến trình mới (khoá không còn nhớ trong bộ nhớ, ADR-004d).
+            let fresh = SecureEnclaveBackend(
+                keyService: keyService, sealedService: sealedService, legacyService: legacyService)
+            #expect(fresh.status(account: ref) == .undecryptable)
+            try fresh.save(account: ref, secret: "again")
+            #expect(fresh.read(account: ref) == "again")
         }
     }
 }

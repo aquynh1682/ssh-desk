@@ -90,5 +90,5 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [x] Gắn SSH Desk vào Warp: tạm không làm
 
 ## Bước L — Sửa lỗi người dùng báo 2026-10-28
-- [ ] L1 Không hỏi Keychain lặp lại: nhớ khoá SE + trạng thái, View không giải mã, nút "Làm mới quyền Keychain" — ADR-004d
-- [ ] L2 Tự gõ mật khẩu vào Windows App qua Accessibility, rơi về clipboard — ADR-018b
+- [~] L1 (code xong, QA→sửa, PM duyệt; CHƯA build — chạy `make check` trên Mac rồi thử tay) Không hỏi Keychain lặp lại: nhớ khoá SE + trạng thái, View không giải mã, nút "Làm mới quyền Keychain" — ADR-004d
+- [~] L2 (code xong, QA→sửa, PM duyệt; CHƯA build — chạy `make check` trên Mac rồi thử với Windows App) Tự gõ mật khẩu vào Windows App qua Accessibility, rơi về clipboard — ADR-018b

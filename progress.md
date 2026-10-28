@@ -2,6 +2,13 @@
 
 Ghi mới nhất ở trên. Mỗi phiên: làm gì, còn dở gì, bước tiếp theo.
 
+## 2026-10-28 — Bước L: sửa 2 lỗi người dùng báo (phiên cloud, nhánh `claude/password-ssh-windows-issues-t9bjys`)
+- Lỗi 1 "hộp thoại Keychain hiện liên tục": nguyên nhân `HostDetailView` gọi `needsReauth` → giải mã thật mỗi lần vẽ, blob khoá SE đọc lại mỗi thao tác, ACL blob khoá không bao giờ làm mới → ADR-004d, L1.
+- Lỗi 2 "Windows phải tự dán mật khẩu": người dùng xác nhận là Windows App (RDP) và **cho phép tự gõ qua Trợ năng** → ADR-018b, L2 (rơi về clipboard khi chưa có quyền/hết 30 giây).
+- coder → qa-reviewer (3 mục Nên sửa: refresh khoá có thể mất khoá, tự gõ không đọc lại cài đặt khi chờ, đường nhập tay) → coder sửa → PM duyệt. doc-writer cập nhật README/TESTING/KNOWN_LIMITATIONS.
+- **Phiên này chạy trên Linux, không có Swift → CHƯA build, CHƯA chạy `make check`.** Việc đầu tiên trên Mac: `perl -e 'alarm 550; exec @ARGV' make check`; lỗi compile thì giao coder sửa (QA/coder ghi các chỗ chưa chắc: `unsafeBitCast` AXUIElement, `keyboardSetUnicodeString` với `[UInt16]`, closure `stillAllowed` trong hàm lồng, `if case ..., (try? ...) != nil`, test `openingAgainCancels…` chờ 150 ms có thể chập chờn).
+- **Người dùng cần thử:** make install → bấm "Làm mới quyền Keychain" (chọn Luôn cho phép) → mở chi tiết host không còn hỏi; cấp quyền Trợ năng → Mở Windows App tự gõ mật khẩu.
+
 ## 2026-10-24 — Bước K (tiếp): trả lời của người dùng
 - ADR mới: 031 (lưu mật khẩu từ cột Excel/CSV của khách, bật từng lần), 028b (ATS `NSAllowsArbitraryLoads` + TLS ≥ 1.2 cho metrics), 026b (tự thêm khi nguồn chỉ có máy mới + Hoàn tác). Xác nhận PROD cho nút Mở Warp và gắn vào Warp: người dùng chưa muốn làm.
 - K8a, K8b: code xong, QA (K8a có Chặn → đã sửa) + PM duyệt, commit, tài liệu xong. Push nhánh `feat/e1-ssh-keys` (người dùng cho phép, không force).

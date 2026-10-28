@@ -14,17 +14,30 @@ final class FakeItemStorage: SecretItemStorage, @unchecked Sendable {
     var failWrites = false
     var failDeletes = false
     var readError: Int32?  // ép lỗi đọc (ACL từ chối, keychain khoá...)
+    /// Tài khoản ép lỗi ghi. Với `.replace` mô phỏng Keychain thật: xoá trước rồi mới lỗi khi thêm.
+    var failingAccounts: Set<String> = []
+    /// Số lần đọc DỮ LIỆU (kích hoạt kiểm ACL trên Keychain thật); `exists` không tính.
+    private(set) var reads = 0
     var onWrite: (@Sendable (String, Data) -> Data)?  // sửa dữ liệu khi ghi (mô phỏng ghi hỏng)
 
     private(set) var modes: [String: [SecretWriteMode]] = [:]
     func saveData(account: String, data: Data, mode: SecretWriteMode) throws {
         try lock.withLock {
             modes[account, default: []].append(mode)
+            if failingAccounts.contains(account) {
+                if mode == .replace { items[account] = nil }
+                throw KeychainBackendError.status(-25299)
+            }
             if failWrites { throw KeychainBackendError.status(-25299) }
             items[account] = onWrite?(account, data) ?? data
         }
     }
-    func readData(account: String) -> Data? { lock.withLock { items[account] } }
+    func readData(account: String) -> Data? {
+        lock.withLock {
+            reads += 1
+            return items[account]
+        }
+    }
     func delete(account: String) throws {
         try lock.withLock {
             if failDeletes { throw KeychainBackendError.status(-25299) }
@@ -34,6 +47,7 @@ final class FakeItemStorage: SecretItemStorage, @unchecked Sendable {
     func exists(account: String) -> Bool { lock.withLock { items[account] != nil } }
     func readItem(account: String) -> SecretItemRead {
         lock.withLock {
+            reads += 1
             if let e = readError { return .error(e) }
             return items[account].map { .found($0) } ?? .notFound
         }
@@ -67,6 +81,11 @@ struct Fixture {
             provider: SoftwareProvider(isAvailable: available))
     }
     func putLegacy(_ ref: String, _ value: String) { legacy.put(ref, Data(value.utf8)) }
+    /// Backend mới trên cùng kho: mô phỏng khởi động lại tiến trình (khoá nhớ trong bộ nhớ bị mất).
+    func restarted() -> SecureEnclaveBackend {
+        SecureEnclaveBackend(
+            keyStorage: keys, sealedStorage: sealed, legacyStorage: legacy, provider: SoftwareProvider())
+    }
 }
 
 // MARK: - Seal / open thuần
@@ -146,17 +165,20 @@ struct Fixture {
     let f = Fixture()
     try f.backend.save(account: "old", secret: "pw")
     try f.keys.delete(account: "default")
-    #expect(f.backend.status(account: "old") == .undecryptable)
-    #expect(f.backend.read(account: "old") == nil)
-    #expect(f.backend.exists(account: "old"))
+    // Khởi động lại tiến trình (khoá nhớ trong bộ nhớ không còn).
+    let b = f.restarted()
+    #expect(b.status(account: "old") == .undecryptable)
+    #expect(b.read(account: "old") == nil)
+    #expect(b.exists(account: "old"))
     // Blob hỏng: save tạo khoá mới; ciphertext cũ vẫn undecryptable; nhập lại ghi đè.
     f.keys.put("default", Data([1, 2, 3]))
-    try f.backend.save(account: "new", secret: "n")
-    #expect(f.backend.read(account: "new") == "n")
-    #expect(f.backend.status(account: "old") == .undecryptable)
-    try f.backend.save(account: "old", secret: "pw-again")
-    #expect(f.backend.status(account: "old") == .present)
-    #expect(f.backend.read(account: "old") == "pw-again")
+    let c = f.restarted()
+    try c.save(account: "new", secret: "n")
+    #expect(c.read(account: "new") == "n")
+    #expect(c.status(account: "old") == .undecryptable)
+    try c.save(account: "old", secret: "pw-again")
+    #expect(c.status(account: "old") == .present)
+    #expect(c.read(account: "old") == "pw-again")
 }
 
 @Test func noSecureEnclaveSaveThrowsAndReadIsMissing() throws {
@@ -182,9 +204,10 @@ struct Fixture {
     try store.save(ref: "r", password: "x")
     #expect(store.status(ref: "r") == .present && store.exists(ref: "r"))
     try f.keys.delete(account: "default")
-    #expect(store.status(ref: "r") == .undecryptable)
+    let store2 = SecureEnclaveCredentialStore(backend: f.restarted())
+    #expect(store2.status(ref: "r") == .undecryptable)
     // AutofillGated chuyển tiếp status.
-    let gated = AutofillGatedCredentialStore(base: store) { true }
+    let gated = AutofillGatedCredentialStore(base: store2) { true }
     #expect(gated.status(ref: "r") == .undecryptable)
 }
 
@@ -219,7 +242,7 @@ struct Fixture {
     try f.backend.save(account: "h", secret: "new")
     try f.keys.delete(account: "default")
     f.putLegacy("h", "old")
-    _ = f.backend.migrateLegacy(accounts: ["h"])
+    _ = f.restarted().migrateLegacy(accounts: ["h"])
     #expect(f.legacy.exists(account: "h"))
 }
 
@@ -244,7 +267,8 @@ struct Fixture {
     try f.backend.save(account: "old", secret: "pw")
     let blob = f.keys.readData(account: "default")
     f.keys.readError = -25293  // errSecAuthFailed
-    #expect(throws: SecureEnclaveBackendError.keyUnreadable) { try f.backend.save(account: "new", secret: "x") }
+    let b = f.restarted()
+    #expect(throws: SecureEnclaveBackendError.keyUnreadable) { try b.save(account: "new", secret: "x") }
     #expect(
         SecureEnclaveBackendError.keyUnreadable.message == "Không mở được khoá trong Keychain — thử lại")
     f.keys.readError = nil
@@ -361,4 +385,233 @@ private struct LoadFailure: Error {}
     let r = await CredentialMigration.runIfNeeded(store: store, settings: settings) { ([], []) }
     #expect(r == nil && !settings.flag(CredentialMigration.flagKey))
     #expect(f.legacy.exists(account: "host-ref"))
+}
+
+// MARK: - ADR-004d: không hỏi Keychain lặp lại
+
+@Test func statusIsReadFromStorageOnlyOnce() throws {
+    let f = Fixture()
+    let store = SecureEnclaveCredentialStore(backend: f.backend)
+    try store.save(ref: "r", password: "pw")
+    #expect(store.cachedStatus(ref: "r") == nil)  // save xoá mục nhớ
+    let before = f.sealed.reads
+    for _ in 0..<5 { #expect(store.status(ref: "r") == .present) }
+    #expect(f.sealed.reads - before == 1)
+    #expect(store.cachedStatus(ref: "r") == .present)
+    // exists không giải mã và không làm thay đổi bộ nhớ.
+    #expect(store.exists(ref: "r"))
+    #expect(f.sealed.reads - before == 1)
+}
+
+@Test func keyBlobIsReadOnceAcrossReadsAndStatuses() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")
+    try f.backend.save(account: "b", secret: "B")
+    let b = f.restarted()
+    let before = f.keys.reads
+    #expect(b.read(account: "a") == "A")
+    #expect(b.read(account: "b") == "B")
+    #expect(b.status(account: "a") == .present)
+    try b.save(account: "c", secret: "C")  // keyForSaving cũng dùng khoá đã nhớ
+    #expect(f.keys.reads - before == 1)
+}
+
+@Test func keyReadFailureIsNotRemembered() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")
+    let b = f.restarted()
+    f.keys.readError = -25293
+    #expect(b.status(account: "a") == .undecryptable)
+    #expect(b.status(account: "a") == .undecryptable)  // lỗi: thử đọc lại, không nhớ
+    f.keys.readError = nil
+    #expect(b.status(account: "a") == .present)
+    let before = f.keys.reads
+    #expect(b.read(account: "a") == "A")
+    #expect(f.keys.reads == before)  // đã nhớ sau lần đọc thành công
+}
+
+@Test func saveDeleteInvalidateAndReadUpdatesRememberedStatus() throws {
+    let f = Fixture()
+    let store = SecureEnclaveCredentialStore(backend: f.backend)
+    #expect(store.read(ref: "r") == nil)
+    #expect(store.cachedStatus(ref: "r") == .missing)
+    try store.save(ref: "r", password: "pw")
+    #expect(store.cachedStatus(ref: "r") == nil)
+    #expect(store.read(ref: "r") == "pw")
+    #expect(store.cachedStatus(ref: "r") == .present)
+    try store.delete(ref: "r")
+    #expect(store.cachedStatus(ref: "r") == nil)
+    // Đọc thật phát hiện undecryptable (khoá đã mất) và nhớ lại.
+    try store.save(ref: "r", password: "pw")
+    try f.keys.delete(account: "default")
+    let store2 = SecureEnclaveCredentialStore(backend: f.restarted())
+    #expect(store2.cachedStatus(ref: "r") == nil)
+    #expect(store2.read(ref: "r") == nil)
+    #expect(store2.cachedStatus(ref: "r") == .undecryptable)
+}
+
+@Test func wrappersForwardCachedStatusAndOthersDefaultToNil() throws {
+    let f = Fixture()
+    let store = SecureEnclaveCredentialStore(backend: f.backend)
+    try store.save(ref: "r", password: "pw")
+    _ = store.status(ref: "r")
+    let gated = AutofillGatedCredentialStore(base: store) { true }
+    #expect(gated.cachedStatus(ref: "r") == .present)
+    let overlay = EphemeralOverlayCredentialStore(base: store, vault: EphemeralPasswordVault())
+    #expect(overlay.cachedStatus(ref: "r") == .present)
+    #expect(InMemoryCredentialStore().cachedStatus(ref: "r") == nil)
+}
+
+@Test func noViewFileAsksStoreForStatus() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().appendingPathComponent("Sources/SSHDesk")
+    let all = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?.allObjects
+    let files = (all as? [URL] ?? []).filter { $0.pathExtension == "swift" }
+    #expect(files.count > 10)
+    var offenders: [String] = []
+    for file in files where file.lastPathComponent != "AppModel.swift" {
+        let text = try String(contentsOf: file, encoding: .utf8)
+        if text.contains(".status(ref:") { offenders.append(file.lastPathComponent) }
+    }
+    #expect(offenders.isEmpty, "\(offenders)")
+    // needsReauth / setNeedsReauth chỉ đọc trạng thái đã nhớ.
+    let model = try String(contentsOf: root.appendingPathComponent("AppModel.swift"), encoding: .utf8)
+    #expect(!model.contains("credentials.status(ref:"))
+    #expect(model.contains("credentials.cachedStatus(ref: ref)"))
+}
+
+// MARK: Làm mới quyền Keychain
+
+@Test func refreshAccessRewritesKeyAndCiphertextKeepingValues() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")
+    try f.backend.save(account: "b", secret: "B")
+    let blob = f.keys.readData(account: "default")
+    let ctA = f.sealed.readData(account: "a")
+    let report = f.backend.refreshAccess(accounts: ["a", "b", "ghost", "a"])
+    #expect(report.key == .refreshed)
+    #expect(report.refreshed == 2 && report.skipped == 1 && report.failed == 0)
+    #expect(f.keys.accounts == ["default"])  // bản tạm đã xoá
+    #expect(f.keys.readData(account: "default") == blob)
+    #expect(f.sealed.readData(account: "a") == ctA)
+    #expect(f.keys.modes["default"]?.last == .replace)
+    #expect(f.sealed.modes["a"]?.last == .replace)
+    #expect(f.restarted().read(account: "a") == "A")
+    #expect(f.restarted().read(account: "b") == "B")
+}
+
+@Test func refreshAccessWithoutAnyKeyIsAbsent() throws {
+    let f = Fixture()
+    let report = f.backend.refreshAccess(accounts: ["a"])
+    #expect(report.key == .absent && report.skipped == 1 && f.keys.accounts.isEmpty)
+}
+
+@Test func refreshFailureWritingTempCopyKeepsKeyUntouched() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")
+    let blob = f.keys.readData(account: "default")
+    f.keys.failingAccounts = ["default-refresh"]
+    let report = f.backend.refreshAccess(accounts: ["a"])
+    #expect(report.key == .failed)
+    #expect(f.keys.readData(account: "default") == blob)
+    #expect(f.restarted().read(account: "a") == "A")
+}
+
+@Test func refreshFailureWritingNewDefaultKeepsTempCopyAndRecovers() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")
+    let blob = f.keys.readData(account: "default")
+    f.keys.failingAccounts = ["default"]  // `.replace` xoá `default` rồi lỗi khi thêm
+    let report = f.backend.refreshAccess(accounts: [])
+    #expect(report.key == .failed)
+    #expect(f.keys.readData(account: "default") == nil)
+    #expect(f.keys.readData(account: "default-refresh") == blob)
+    // Lần dùng sau (tiến trình mới): khôi phục từ bản tạm, không tạo khoá mới.
+    f.keys.failingAccounts = []
+    let b = f.restarted()
+    #expect(b.read(account: "a") == "A")
+    #expect(f.keys.readData(account: "default") == blob)
+    #expect(!f.keys.exists(account: "default-refresh"))
+}
+
+@Test func refreshReadBackMismatchKeepsGoodCopy() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")
+    let blob = f.keys.readData(account: "default")
+    f.keys.onWrite = { account, data in account == "default" ? Data(data.dropLast()) : data }
+    #expect(f.backend.refreshAccess(accounts: []).key == .failed)
+    f.keys.onWrite = nil
+    #expect(f.keys.readData(account: "default-refresh") == blob)
+    // `default` đang hỏng (31 byte) -> khôi phục từ bản tạm.
+    #expect(f.restarted().read(account: "a") == "A")
+    #expect(f.keys.readData(account: "default") == blob)
+}
+
+@Test func recoveryFromTempCopyHappensBeforeSavingNewKey() throws {
+    let f = Fixture()
+    try f.backend.save(account: "old", secret: "pw")
+    let blob = f.keys.readData(account: "default")!
+    try f.keys.delete(account: "default")
+    f.keys.put("default-refresh", blob)
+    let b = f.restarted()
+    try b.save(account: "new", secret: "n")  // không được sinh khoá mới
+    #expect(f.keys.readData(account: "default") == blob)
+    #expect(b.read(account: "old") == "pw")
+    #expect(b.read(account: "new") == "n")
+}
+
+@Test func refreshWithUnreadableKeyChangesNothing() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")
+    f.keys.readError = -25293
+    let report = f.backend.refreshAccess(accounts: ["a"])
+    #expect(report.key == .failed)
+    f.keys.readError = nil
+    #expect(f.keys.accounts == ["default"])
+}
+
+@Test func refreshCiphertextWriteFailureCountsFailedAndKeepsItem() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")
+    try f.backend.save(account: "b", secret: "B")
+    f.sealed.failWrites = true
+    let report = f.backend.refreshAccess(accounts: ["a", "b"])
+    #expect(report.refreshed == 0 && report.failed == 2)
+    f.sealed.failWrites = false
+    #expect(f.restarted().read(account: "a") == "A")
+    #expect(f.restarted().read(account: "b") == "B")
+}
+
+@Test func storeRefreshClearsRememberedStatus() throws {
+    let f = Fixture()
+    let store = SecureEnclaveCredentialStore(backend: f.backend)
+    try store.save(ref: "r", password: "pw")
+    _ = store.status(ref: "r")
+    #expect(store.cachedStatus(ref: "r") == .present)
+    let report = store.refreshAccess(refs: ["r"])
+    #expect(report.refreshed == 1)
+    #expect(store.cachedStatus(ref: "r") == nil)
+}
+
+@Test func refreshWithCorruptDefaultUsesGoodTempCopyEvenWithKeyCachedInMemory() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")  // khoá còn trong RAM của f.backend
+    let blob = try #require(f.keys.readData(account: "default"))
+    f.keys.put("default-refresh", blob)
+    f.keys.put("default", Data([1, 2, 3]))
+    let report = f.backend.refreshAccess(accounts: ["a"])
+    #expect(report.key == .refreshed)
+    #expect(f.keys.readData(account: "default") == blob)
+    #expect(f.keys.readData(account: "default-refresh") == nil)
+    #expect(f.restarted().read(account: "a") == "A")
+}
+
+@Test func refreshWithBothKeyBlobsCorruptWritesNothing() throws {
+    let f = Fixture()
+    try f.backend.save(account: "a", secret: "A")
+    f.keys.put("default", Data([1, 2, 3]))
+    f.keys.put("default-refresh", Data([4, 5]))
+    #expect(f.backend.refreshAccess(accounts: []).key == .failed)
+    #expect(f.keys.readData(account: "default") == Data([1, 2, 3]))
+    #expect(f.keys.readData(account: "default-refresh") == Data([4, 5]))
 }

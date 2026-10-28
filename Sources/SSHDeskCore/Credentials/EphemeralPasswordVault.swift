@@ -119,4 +119,7 @@ public struct EphemeralOverlayCredentialStore: CredentialStore {
     public func status(ref: String) -> CredentialStatus {
         isEphemeral(ref) ? (vault.read(reference: ref) != nil ? .present : .missing) : base.status(ref: ref)
     }
+    public func cachedStatus(ref: String) -> CredentialStatus? {
+        isEphemeral(ref) ? status(ref: ref) : base.cachedStatus(ref: ref)
+    }
 }

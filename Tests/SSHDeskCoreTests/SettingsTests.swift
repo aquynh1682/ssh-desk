@@ -28,6 +28,7 @@ import Testing
         s.transferHistoryLimit = 0
         s.autofillEnabled = false
         s.clipboardClearSeconds = 90
+        s.windowsAutotypePassword = false
         s.analystRetention = 120
         s.analystProbeTimeout = ProbeTimeout(7)
         s.monitorIntervalSeconds = 30
@@ -66,6 +67,11 @@ import Testing
         #expect(load("security.autofill_enabled", "maybe").autofillEnabled)
         #expect(!load("security.autofill_enabled", "0").autofillEnabled)
         #expect(!load("security.autofill_enabled", "false").autofillEnabled)
+        // ADR-018b: mặc định bật; khoá lưu đúng tên.
+        #expect(AppSettings.default.windowsAutotypePassword)
+        #expect(load("windows.autotype_password", "maybe").windowsAutotypePassword)
+        #expect(!load("windows.autotype_password", "0").windowsAutotypePassword)
+        #expect(AppSettings.default.values["windows.autotype_password"] == "1")
     }
 
     @Test func thresholdsKeepDangerAboveWarning() {
