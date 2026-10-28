@@ -1,4 +1,4 @@
-.PHONY: build test lint format check run app install template
+.PHONY: build test lint format check run app install template diagrams code-map
 
 # Máy chỉ có Command Line Tools (không có Xcode.app): SwiftPM không tự nạp macro plugin
 # của Swift Testing, nên phải trỏ thủ công. Có Xcode đầy đủ thì biến này vô hại.
@@ -52,3 +52,12 @@ template:
 	@rm -f -- "$(TEMPLATE_TMP)"
 	swift run sshdesk-cli template "$(TEMPLATE_TMP)"
 	@mv -f -- "$(TEMPLATE_TMP)" "$(TEMPLATE_PATH)"
+
+# Sinh lại 4 sơ đồ draw.io trong docs/diagrams (sửa bố cục ở scripts/diagrams/gen_diagrams.py).
+diagrams:
+	python3 scripts/diagrams/gen_diagrams.py docs/diagrams
+
+# Sinh lại bản đồ code docs/code-map/index.html (bấm khối → xem đúng đoạn source). Chỉ cần python3.
+# Báo lỗi nếu một khối trỏ tới hàm/file không còn → sửa VIEWS trong scripts/code-map/build.py.
+code-map:
+	python3 scripts/code-map/build.py

@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bản đồ code SSH Desk</title>
+<style>
+/* Bố cục: sơ đồ các lớp bên trái, khung code bên phải; dưới 960px thì xếp dọc. */
+:root {
+  --bg: #f2f5f7; --surface: #ffffff; --ink: #14212b; --muted: #5b6b78; --line: #d3dce3;
+  --accent: #0a6c8c; --accent-soft: #d8edf4; --hl: #fff3c4; --hl-edge: #c99a00;
+  --code-bg: #fafbfc; --gutter: #8a98a4;
+  --lane-a: #e6f0f5; --lane-b: #ecf1ea; --lane-c: #f3eee4; --lane-d: #eeeaf3; --lane-e: #f1e9ea;
+  --tok-kw: #a33a7a; --tok-str: #1d7a4d; --tok-com: #7a8791; --tok-num: #a1530b; --tok-type: #2a5fa8;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f161c; --surface: #17212a; --ink: #e4ecf1; --muted: #93a4b1; --line: #2a3a46;
+    --accent: #5cc0de; --accent-soft: #1b3947; --hl: #3d3513; --hl-edge: #e0b73a;
+    --code-bg: #121b22; --gutter: #62727e;
+    --lane-a: #14232c; --lane-b: #18221c; --lane-c: #221e15; --lane-d: #1d1a25; --lane-e: #241a1c;
+    --tok-kw: #e58cc0; --tok-str: #7bd3a2; --tok-com: #7b8b97; --tok-num: #e8a566; --tok-type: #8cb8f0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f161c; --surface: #17212a; --ink: #e4ecf1; --muted: #93a4b1; --line: #2a3a46;
+  --accent: #5cc0de; --accent-soft: #1b3947; --hl: #3d3513; --hl-edge: #e0b73a;
+  --code-bg: #121b22; --gutter: #62727e;
+  --lane-a: #14232c; --lane-b: #18221c; --lane-c: #221e15; --lane-d: #1d1a25; --lane-e: #241a1c;
+  --tok-kw: #e58cc0; --tok-str: #7bd3a2; --tok-com: #7b8b97; --tok-num: #e8a566; --tok-type: #8cb8f0;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.5;
+  padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { max-width: 1560px; margin: 0 auto 16px; display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+header .intro { flex: 1 1 520px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; text-wrap: balance; letter-spacing: -0.01em; }
+header p { margin: 0; color: var(--muted); max-width: 78ch; }
+.views { display: flex; gap: 4px; flex-wrap: wrap; }
+.views button { font: 500 13px var(--font); background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.views button:hover { border-color: var(--accent); }
+.views button[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.views button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.layout { max-width: 1560px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+.map-wrap { padding: 12px; }
+.scroll-x { overflow-x: auto; }
+svg { display: block; min-width: 820px; width: 100%; height: auto; }
+.lane { stroke: none; }
+.lane-label { font: 600 11px var(--font); letter-spacing: 0.08em; text-transform: uppercase; fill: var(--muted); }
+.edge { fill: none; stroke: var(--muted); stroke-width: 1.2; opacity: 0.55; color: var(--muted); }
+.edge.on { stroke: var(--accent); color: var(--accent); stroke-width: 2; opacity: 1; }
+.edge-label { font: 500 10px var(--font); fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.edge-label.on { fill: var(--accent); font-weight: 600; }
+.node { cursor: pointer; outline: none; }
+.node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; transition: stroke 0.12s, fill 0.12s; }
+.node:hover rect, .node:focus-visible rect { stroke: var(--accent); }
+.node:focus-visible rect { stroke-width: 3; }
+.node.near rect { stroke: var(--accent); stroke-dasharray: 4 3; }
+.node.sel rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.4; stroke-dasharray: none; }
+.node .t { font: 600 12.5px var(--font); fill: var(--ink); }
+.node .s { font: 400 10.5px var(--mono); fill: var(--muted); }
+.hint { margin: 10px 4px 0; color: var(--muted); font-size: 12.5px; }
+.panel { position: sticky; top: 12px; display: flex; flex-direction: column; max-height: calc(100vh - 24px); }
+@media (max-width: 960px) { .panel { position: static; max-height: none; } }
+.panel-head { padding: 14px 16px 12px; border-bottom: 1px solid var(--line); }
+.panel-head h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.panel-head p { margin: 0 0 10px; color: var(--ink); max-width: 68ch; }
+.refs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ref { all: unset; box-sizing: border-box; cursor: pointer; font: 500 12px var(--mono); color: var(--accent); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--line); overflow-wrap: anywhere; }
+.ref:hover { border-color: var(--accent); }
+.ref:focus-visible { outline: 2px solid var(--accent); }
+.ref.cur { background: var(--accent-soft); border-color: transparent; }
+.path-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button.btn, a.btn { font: 500 12px var(--font); background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; text-decoration: none; }
+button.btn:hover, a.btn:hover { border-color: var(--accent); }
+button.btn:focus-visible, a.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.code { overflow: auto; background: var(--code-bg); font: 400 12.5px/1.55 var(--mono); flex: 1; min-height: 280px; max-height: 72vh; border-radius: 0 0 8px 8px; }
+@media (max-width: 960px) { .code { max-height: 60vh; } }
+.code table { border-collapse: collapse; min-width: 100%; }
+.code td { padding: 0 12px 0 0; white-space: pre; vertical-align: top; }
+.code td.n { position: sticky; left: 0; background: var(--code-bg); color: var(--gutter); text-align: right; padding: 0 10px 0 12px; user-select: none; font-variant-numeric: tabular-nums; border-right: 1px solid var(--line); }
+.code tr.hl td { background: var(--hl); }
+.code tr.hl td.n { background: var(--hl); color: var(--ink); box-shadow: inset 3px 0 0 var(--hl-edge); }
+.k { color: var(--tok-kw); } .s2 { color: var(--tok-str); } .c { color: var(--tok-com); font-style: italic; } .m { color: var(--tok-num); } .ty { color: var(--tok-type); }
+.h { color: var(--tok-kw); font-weight: 600; }
+.files { max-width: 1560px; margin: 16px auto 0; padding: 14px 16px; }
+.files h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px 20px; }
+.groups h4 { margin: 0 0 6px; font: 600 11px var(--font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.groups ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.groups button { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; font: 400 12px var(--mono); padding: 3px 6px; border-radius: 4px; color: var(--ink); overflow-wrap: anywhere; }
+.groups button:hover { background: var(--accent-soft); }
+.groups button:focus-visible { outline: 2px solid var(--accent); }
+.groups button.cur { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="intro">
+    <h1>Bản đồ code SSH Desk</h1>
+    <p id="intro"></p>
+  </div>
+  <nav class="views" id="views" role="tablist" aria-label="Chọn sơ đồ"></nav>
+</header>
+
+<div class="layout">
+  <section class="card map-wrap" aria-label="Sơ đồ">
+    <div class="scroll-x"><svg id="map" role="group"></svg></div>
+    <p class="hint" id="hint"></p>
+  </section>
+
+  <section class="card panel" aria-live="polite">
+    <div class="panel-head">
+      <h2 id="p-title"></h2>
+      <p id="p-desc"></p>
+      <div class="refs" id="p-refs"></div>
+      <div class="path-row">
+        <button class="btn" id="b-range" type="button">Chỉ đoạn này</button>
+        <button class="btn" id="b-copy" type="button">Sao chép</button>
+        <a class="btn" id="b-open">Mở trong VS Code</a>
+      </div>
+    </div>
+    <div class="code" id="code" tabindex="0" aria-label="Mã nguồn"></div>
+  </section>
+</div>
+
+<section class="card files" aria-label="Tất cả tệp">
+  <h3>Tất cả tệp đã nhúng</h3>
+  <div class="groups" id="groups"></div>
+</section>
+
+<script>
+(function () {
+  var DATA = /*__DATA__*/null;
+  var NS = "http://www.w3.org/2000/svg";
+  var NH = 56, NW = 172, COLW = 200, X0 = 30, ROWGAP = 18, LANE_TOP = 36, LANE_BOTTOM = 14, LANE_GAP = 12;
+  var LANE_COLORS = ["--lane-a", "--lane-b", "--lane-c", "--lane-d", "--lane-e"];
+  var START = { "kien-truc": "conn", "mo-warp": "cmd", "nhap-excel": "plan", "quy-trinh": "pm" };
+  var svg = document.getElementById("map"), codeEl = document.getElementById("code");
+  var state = { view: null, id: null, ref: 0, file: null, only: false };
+  var byId = {}, nodeEls = {}, edgeEls = [];
+
+  document.getElementById("intro").textContent =
+    "Bấm vào một khối để xem đúng đoạn code của nó; khối liên quan và đường nối được tô sáng. " +
+    "Nội dung là bản chụp source ngày " + DATA.date + " — chạy make code-map để cập nhật.";
+
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  /* ---------- sơ đồ ---------- */
+  function layout(view) {
+    var rows = view.lanes.map(function () { return 1; }), cols = 1;
+    view.nodes.forEach(function (n) { rows[n.lane] = Math.max(rows[n.lane], n.row + 1); cols = Math.max(cols, n.col + 1); });
+    var y = 6, lanes = [];
+    view.lanes.forEach(function (name, i) {
+      var h = LANE_TOP + rows[i] * NH + (rows[i] - 1) * ROWGAP + LANE_BOTTOM;
+      lanes.push({ name: name, y: y, h: h }); y += h + LANE_GAP;
+    });
+    view.nodes.forEach(function (n) {
+      n.x = X0 + n.col * COLW; n.y = lanes[n.lane].y + LANE_TOP + n.row * (NH + ROWGAP); n.w = NW;
+    });
+    return { lanes: lanes, width: X0 + cols * COLW + 6, height: y - LANE_GAP + 6 };
+  }
+
+  function edgePath(a, b) {
+    var ax = a.x + a.w / 2, bx = b.x + b.w / 2;
+    if (Math.abs(a.y - b.y) < 4) {
+      if (Math.abs(a.col - b.col) === 1) {
+        var right = a.x < b.x, x1 = right ? a.x + a.w : a.x, x2 = right ? b.x : b.x + b.w, y = a.y + NH / 2;
+        /* khe giữa hai khối kề nhau quá hẹp cho chữ → đặt nhãn phía trên khe */
+        return { d: "M" + x1 + " " + y + " L" + x2 + " " + y, lx: (x1 + x2) / 2, ly: a.y - 5 };
+      }
+      /* vòng lên phía trên khi hai khối cùng hàng nhưng không kề nhau; khoảng càng xa vòng càng cao */
+      var top = a.y, cy = top - 10 - 4 * Math.abs(a.col - b.col);
+      return { d: "M" + ax + " " + top + " C" + ax + " " + cy + " " + bx + " " + cy + " " + bx + " " + top, lx: (ax + bx) / 2, ly: cy + 9 };
+    }
+    var down = b.y > a.y;
+    var y1 = down ? a.y + NH : a.y, y2 = down ? b.y : b.y + NH, my = (y1 + y2) / 2;
+    if (a.col === b.col) return { d: "M" + ax + " " + y1 + " L" + bx + " " + y2, lx: ax + 6, ly: my + 3, left: true };
+    return { d: "M" + ax + " " + y1 + " C" + ax + " " + my + " " + bx + " " + my + " " + bx + " " + y2, lx: (ax + bx) / 2, ly: my - 3 };
+  }
+
+  function drawView(view) {
+    svg.textContent = "";
+    byId = {}; nodeEls = {}; edgeEls = [];
+    view.nodes.forEach(function (n) { byId[n.id] = n; });
+    var L = layout(view);
+    svg.setAttribute("viewBox", "0 0 " + L.width + " " + L.height);
+    svg.setAttribute("aria-label", "Sơ đồ " + view.title);
+    var defs = el("defs", {}, svg);
+    [["arr", "var(--muted)"], ["arr-on", "var(--accent)"]].forEach(function (m) {
+      var mk = el("marker", { id: m[0], viewBox: "0 0 10 10", refX: "9", refY: "5", markerWidth: "7", markerHeight: "7", orient: "auto-start-reverse" }, defs);
+      el("path", { d: "M0 1 L9 5 L0 9 z" }, mk).style.fill = m[1];
+    });
+    L.lanes.forEach(function (l, i) {
+      var r = el("rect", { x: 0, y: l.y, width: L.width, height: l.h, rx: 8, "class": "lane" }, svg);
+      r.style.fill = "var(" + LANE_COLORS[i % LANE_COLORS.length] + ")";
+      el("text", { x: 10, y: l.y + 16, "class": "lane-label" }, svg).textContent = l.name;
+    });
+    var labels = [];
+    view.edges.forEach(function (e) {
+      var a = byId[e[0]], b = byId[e[1]], g = edgePath(a, b);
+      var p = el("path", { d: g.d, "class": "edge", "marker-end": "url(#arr)" }, svg);
+      var item = { p: p, from: e[0], to: e[1], t: null };
+      if (e[2]) item.t = { x: g.lx, y: g.ly, text: e[2], anchor: g.left ? "start" : "middle" };
+      edgeEls.push(item); labels.push(item);
+    });
+    view.nodes.forEach(function (n) {
+      var g = el("g", { "class": "node", tabindex: 0, role: "button", "aria-label": n.title + ", " + n.sub }, svg);
+      el("rect", { x: n.x, y: n.y, width: n.w, height: NH, rx: 6 }, g);
+      el("text", { x: n.x + 10, y: n.y + 23, "class": "t" }, g).textContent = n.title;
+      el("text", { x: n.x + 10, y: n.y + 41, "class": "s" }, g).textContent = fit(n.sub, 26);
+      var tip = el("title", {}, g); tip.textContent = n.sub;
+      g.addEventListener("click", function () { select(n.id, true); });
+      g.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); select(n.id, true); } });
+      nodeEls[n.id] = g;
+    });
+    labels.forEach(function (item) {   /* nhãn vẽ sau khối để không bị che */
+      if (!item.t) return;
+      var t = el("text", { x: item.t.x, y: item.t.y, "class": "edge-label", "text-anchor": item.t.anchor }, svg);
+      t.textContent = item.t.text; item.t = t;
+    });
+    document.getElementById("hint").textContent = view.hint + " Dùng Tab và Enter để duyệt bằng bàn phím.";
+  }
+
+  function fit(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+
+  /* ---------- tô màu ---------- */
+  var SWIFT_KW = ("associatedtype class deinit enum extension fileprivate func import init inout internal let open operator private " +
+    "protocol public rethrows static struct subscript typealias var break case catch continue default defer do else fallthrough for " +
+    "guard if in repeat return throw throws switch where while as Any false is nil self Self super true try async await actor " +
+    "some any final lazy mutating nonisolated override required weak unowned convenience get set willSet didSet indirect isolated sending consuming borrowing").split(" ");
+  var KW = {}; SWIFT_KW.forEach(function (k) { KW[k] = 1; });
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function span(cls, s) { return '<span class="' + cls + '">' + esc(s) + "</span>"; }
+
+  function hlSwift(lines) {
+    var out = [], mode = null;   /* null | "block" | "mstr" */
+    lines.forEach(function (line) {
+      var html = "", i = 0;
+      while (i < line.length) {
+        if (mode === "block" || mode === "mstr") {
+          var end = line.indexOf(mode === "block" ? "*/" : '"""', i);
+          var stop = end < 0 ? line.length : end + (mode === "block" ? 2 : 3);
+          html += span(mode === "block" ? "c" : "s2", line.slice(i, stop));
+          if (end >= 0) mode = null;
+          i = stop; continue;
+        }
+        var rest = line.slice(i), m;
+        if (rest.indexOf("//") === 0) { html += span("c", rest); break; }
+        if (rest.indexOf("/*") === 0) { mode = "block"; html += span("c", "/*"); i += 2; continue; }
+        if (rest.indexOf('"""') === 0) { mode = "mstr"; html += span("s2", '"""'); i += 3; continue; }
+        if ((m = /^#?"(?:[^"\\]|\\.)*"#?/.exec(rest))) { html += span("s2", m[0]); i += m[0].length; continue; }
+        if ((m = /^@?[A-Za-z_][A-Za-z0-9_]*/.exec(rest))) {
+          var w = m[0];
+          html += w.charAt(0) === "@" || KW[w] ? span("k", w) : /^[A-Z]/.test(w) ? span("ty", w) : esc(w);
+          i += w.length; continue;
+        }
+        if ((m = /^\d[\d_]*(?:\.\d+)?/.exec(rest))) { html += span("m", m[0]); i += m[0].length; continue; }
+        html += esc(line.charAt(i)); i++;
+      }
+      out.push(html);
+    });
+    return out;
+  }
+  function hlMarkdown(lines) {
+    var fence = false, front = lines[0] === "---";
+    return lines.map(function (line, i) {
+      if (front) { if (i > 0 && line === "---") front = false; return /^\s*#/.test(line) || line === "---" ? span("c", line) : esc(line); }
+      if (/^\s*```/.test(line)) { fence = !fence; return span("c", line); }
+      if (fence) return span("s2", line);
+      if (/^#{1,6} /.test(line)) return span("h", line);
+      if (/^---\s*$/.test(line)) return span("c", line);
+      return esc(line).replace(/`([^`]+)`/g, '<span class="s2">`$1`</span>').replace(/\*\*([^*]+)\*\*/g, '<b>**$1**</b>');
+    });
+  }
+  function hlPlain(lines) {
+    return lines.map(function (line) { return /^\s*#/.test(line) ? span("c", line) : esc(line); });
+  }
+  var cache = {};
+  function highlighted(path) {
+    if (cache[path]) return cache[path];
+    var lines = DATA.files[path].text.split("\n");
+    if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+    var fn = /\.swift$/.test(path) ? hlSwift : /\.md$/.test(path) ? hlMarkdown : hlPlain;
+    return (cache[path] = fn(lines));
+  }
+
+  /* ---------- khung code ---------- */
+  function currentRef() {
+    var n = state.id ? byId[state.id] : null;
+    return n && n.refs[state.ref] && n.refs[state.ref].file === state.file ? n.refs[state.ref] : null;
+  }
+
+  function renderCode() {
+    var html = highlighted(state.file), ref = currentRef(), range = ref && ref.range;
+    var a = 1, b = html.length;
+    if (state.only && range) { a = range[0]; b = range[1]; }
+    var rows = [];
+    for (var i = a; i <= b; i++) {
+      var on = range && i >= range[0] && i <= range[1];
+      rows.push("<tr" + (on ? ' class="hl"' : "") + '><td class="n">' + i + "</td><td>" + (html[i - 1] || " ") + "</td></tr>");
+    }
+    codeEl.innerHTML = "<table><tbody>" + rows.join("") + "</tbody></table>";
+    var first = codeEl.querySelector("tr.hl");
+    codeEl.scrollTop = first && !state.only ? Math.max(0, first.offsetTop - 48) : 0;
+    codeEl.scrollLeft = 0;
+  }
+
+  function panel() {
+    var n = state.id ? byId[state.id] : null, ref = currentRef();
+    document.getElementById("p-title").textContent = n ? n.title : state.file.split("/").pop();
+    document.getElementById("p-desc").textContent = n ? n.desc : "Toàn bộ tệp. Chọn một khối trong sơ đồ để xem đoạn liên quan được tô sáng.";
+    var refsEl = document.getElementById("p-refs");
+    refsEl.textContent = "";
+    var refs = n ? n.refs : [{ file: state.file, range: null }];
+    refs.forEach(function (r, i) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ref" + (r.file === state.file && (!n || i === state.ref) ? " cur" : "");
+      b.textContent = r.file + (r.range ? ":" + r.range[0] + "–" + r.range[1] : "");
+      b.addEventListener("click", function () { state.ref = i; state.file = r.file; state.only = false; panel(); });
+      refsEl.appendChild(b);
+    });
+    var br = document.getElementById("b-range");
+    br.hidden = !(ref && ref.range);
+    br.textContent = state.only ? "Cả tệp" : "Chỉ đoạn này";
+    var line = ref && ref.range ? ref.range[0] : 1;
+    document.getElementById("b-open").href = "vscode://file/" + DATA.root + "/" + state.file + ":" + line;
+    document.querySelectorAll(".groups button").forEach(function (b) { b.classList.toggle("cur", b.dataset.f === state.file); });
+    renderCode();
+  }
+
+  function mark(id) {
+    var near = {};
+    edgeEls.forEach(function (e) {
+      var on = e.from === id || e.to === id;
+      e.p.classList.toggle("on", on);
+      e.p.setAttribute("marker-end", on ? "url(#arr-on)" : "url(#arr)");
+      if (e.t) e.t.classList.toggle("on", on);
+      if (on) { near[e.from] = 1; near[e.to] = 1; }
+    });
+    Object.keys(nodeEls).forEach(function (k) {
+      nodeEls[k].classList.toggle("sel", k === id);
+      nodeEls[k].classList.toggle("near", k !== id && !!near[k]);
+    });
+  }
+
+  function select(id, scroll) {
+    var n = byId[id]; if (!n) return;
+    state.id = id; state.ref = 0; state.file = n.refs[0].file; state.only = false;
+    mark(id);
+    panel();
+    try { history.replaceState(null, "", "#" + state.view.id + "/" + id); } catch (e) {}
+    if (scroll && window.matchMedia("(max-width: 960px)").matches) {
+      document.querySelector(".panel").scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+  }
+
+  function openFile(path) {
+    var hit = null;
+    state.view.nodes.forEach(function (n) {
+      n.refs.forEach(function (r, i) { if (!hit && r.file === path) hit = { id: n.id, i: i }; });
+    });
+    if (hit) { select(hit.id, false); state.ref = hit.i; state.file = path; panel(); }
+    else { state.id = null; state.ref = 0; state.file = path; state.only = false; mark(null); panel(); }
+    document.querySelector(".panel").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function showView(id, nodeId) {
+    var v = DATA.views.filter(function (x) { return x.id === id; })[0] || DATA.views[0];
+    state.view = v;
+    document.querySelectorAll("#views button").forEach(function (b) { b.setAttribute("aria-selected", b.dataset.v === v.id); });
+    drawView(v);
+    select(byId[nodeId] ? nodeId : (START[v.id] || v.nodes[0].id), false);
+  }
+
+  /* ---------- nút ---------- */
+  document.getElementById("b-range").addEventListener("click", function () { state.only = !state.only; panel(); });
+  document.getElementById("b-copy").addEventListener("click", function () {
+    var btn = this, ref = currentRef(), text = DATA.files[state.file].text;
+    if (state.only && ref && ref.range) text = text.split("\n").slice(ref.range[0] - 1, ref.range[1]).join("\n");
+    function done(ok) { btn.textContent = ok ? "Đã sao chép" : "Chọn và sao chép thủ công"; setTimeout(function () { btn.textContent = "Sao chép"; }, 1600); }
+    try {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { selectAll(); done(false); });
+    } catch (e) { selectAll(); done(false); }
+  });
+  function selectAll() {
+    var r = document.createRange(); r.selectNodeContents(codeEl);
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+
+  var viewsEl = document.getElementById("views");
+  DATA.views.forEach(function (v) {
+    var b = document.createElement("button");
+    b.type = "button"; b.dataset.v = v.id; b.textContent = v.title; b.setAttribute("role", "tab");
+    b.addEventListener("click", function () { showView(v.id); });
+    viewsEl.appendChild(b);
+  });
+
+  var groups = {}, gEl = document.getElementById("groups");
+  Object.keys(DATA.files).forEach(function (p) { (groups[DATA.files[p].group] = groups[DATA.files[p].group] || []).push(p); });
+  Object.keys(groups).sort(function (a, b) {
+    function rank(g) { return g === "Giao diện" ? 0 : g.indexOf("Core") === 0 ? 1 : g.indexOf("Helper") === 0 ? 2 : 3; }
+    return rank(a) - rank(b) || a.localeCompare(b);
+  }).forEach(function (g) {
+    var d = document.createElement("div"), h = document.createElement("h4"), ul = document.createElement("ul");
+    h.textContent = g; d.appendChild(h); d.appendChild(ul);
+    groups[g].forEach(function (p) {
+      var li = document.createElement("li"), b = document.createElement("button");
+      b.type = "button"; b.dataset.f = p; b.textContent = p.replace(/^Sources\/(SSHDeskCore\/|SSHDesk\/)?/, "");
+      b.title = p;
+      b.addEventListener("click", function () { openFile(p); });
+      li.appendChild(b); ul.appendChild(li);
+    });
+    gEl.appendChild(d);
+  });
+
+  var hash = location.hash.slice(1).split("/");
+  showView(hash[0], hash[1]);
+})();
+</script>
+</body>
+</html>
