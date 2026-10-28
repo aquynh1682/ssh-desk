@@ -88,3 +88,7 @@ Mỗi task nhỏ, xong khi `make check` xanh và PM đã review. Đánh dấu `[
 - [~] K8b (code xong, QA đạt→sửa, PM duyệt; chờ thử đồng bộ tự thêm + http nội bộ) Tự áp dụng nguồn khi chỉ có máy mới + Hoàn tác; ATS cho http tên miền nội bộ — ADR-026b, ADR-028b
 - [x] Xác nhận PROD cho nút Mở Warp: người dùng muốn thử trước, chưa làm
 - [x] Gắn SSH Desk vào Warp: tạm không làm
+
+## Bước L — Sửa lỗi người dùng báo 2026-10-28
+- [ ] L1 Không hỏi Keychain lặp lại: nhớ khoá SE + trạng thái, View không giải mã, nút "Làm mới quyền Keychain" — ADR-004d
+- [ ] L2 Tự gõ mật khẩu vào Windows App qua Accessibility, rơi về clipboard — ADR-018b
